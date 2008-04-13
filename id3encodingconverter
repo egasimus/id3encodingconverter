@@ -1,0 +1,1161 @@
+#!/usr/bin/env python
+# -*- coding: utf8 -*-
+"""
+A simple ID3 tag viewer with support for conversion of different character sets.
+
+Features
+  * Conversion of ID3v1 to ID3v2 tags
+  * Simple side by side comparison of ID3v1 and ID3v2 tags
+  * Highlighting of differences between both versions
+  * Selection of encoding based on comparison of encoded versions of ID3v1 tag
+      or encoding names
+  * Batch conversion of several files
+  * Intelligent guessing of encoding
+  * Automatic conversion mode
+  * Designed to just work(tm)
+
+Dependencies
+  * Qt4, Cross-Platform GUI and Framework
+  * KDE4, libraries including kdecore, kdeui, kio
+  * PyKDE4, Python bindings for KDE
+  * TagLib, Audio Meta-Data Library
+  * TagPy, Python bindings for !TagLib
+
+See file TODO for a list of issues.
+
+Copyright (C) 2008 Christoph Burgmer
+(christoph.burgmer@stud.uni-karlsruhe.de)
+
+This program is free software; you can redistribute it and/or
+modify it under the terms of the GNU General Public License
+as published by the Free Software Foundation; either version 2
+of the License, or (at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with this program; if not, write to the Free Software
+Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+"""
+
+import sys
+import os
+import glob
+import locale
+import codecs
+
+from PyQt4.QtCore import QString, QStringList, SIGNAL, Qt, QVariant
+from PyQt4.QtGui import QWidget
+from PyQt4 import QtGui, QtCore
+
+from PyKDE4.kdecore import ki18n, i18n, KCmdLineArgs, KCmdLineOptions
+from PyKDE4.kdecore import KAboutData, KConfig, KUrl
+from PyKDE4.kdeui import KApplication, KXmlGuiWindow, KAction, KToggleAction
+from PyKDE4.kdeui import KStandardAction, KStandardShortcut, KIcon, KMessageBox
+from PyKDE4.kdeui import KConfigDialog, KPageDialog, KConfigSkeleton
+from PyKDE4.kio import KFileDialog, KIO
+
+try:
+    import tagpy
+    from tagpy import id3v2
+except:
+   os.popen("kdialog --sorry 'python-tagpy (Python bindings taglib) is " \
+    + "required for this script.'")
+   raise Exception('need module tagpy')
+try:
+    # try to import local language/encoding guesser
+    import encoding
+except:
+   os.popen("kdialog --sorry 'module encoding is required for this script.'")
+   raise Exception('need module encoding')
+try:
+    # try to set the default encoding (work around limitation in taglib)
+    id3v2.FrameFactory.instance().setDefaultTextEncoding(tagpy.StringType.UTF8)
+except:
+   os.popen("kdialog --sorry 'Install the newest version of tagpy. With your " \
+    + "current version you might come across some bad encoding effects. " \
+    + "Delete this line in the script to suppress the warning.'")
+   raise Exception('old version of tagpy')
+
+import ID3EncodingConverterUI
+import ID3EncodingConverterGuessingSetup
+
+doDebug = True
+
+class partial(object):
+    """
+    Partial function support. Not implemented in Python 2.4's core.
+    Implementation by Peter Harris <scav at blueyonder.co.uk>, see
+    http://www.python.org/dev/peps/pep-0309/
+    """
+
+    def __init__(*args, **kw):
+        self = args[0]
+        self.fn, self.args, self.kw = (args[1], args[2:], kw)
+
+    def __call__(self, *args, **kw):
+        if kw and self.kw:
+            d = self.kw.copy()
+            d.update(kw)
+        else:
+            d = kw or self.kw
+        return self.fn(*(self.args + args), **d)
+
+
+class GuesserSetupWidget(QWidget,
+    ID3EncodingConverterGuessingSetup.Ui_EncodingGuessing):
+
+    def __init__(self, parent):
+        QWidget.__init__(self, parent)
+        self.setupUi(self)
+
+
+class MainWindow(KXmlGuiWindow, ID3EncodingConverterUI.Ui_MainWindow):
+    """
+    Main Window of id3encodingconverter. Inherits from
+    ID3EncodingConverterUI.Ui_MainWindow a class automatically build by
+    $ pykdeuic4 ID3EncodingConverter.ui > ID3EncodingConverterUI.py
+    """
+
+    # encoding model containing represenations of the song's title in different
+    #   encoding representations
+    encodingModel = None
+    # currently selecte file in tag view
+    currentFile = None
+
+    def __init__(self, app):
+        KXmlGuiWindow.__init__(self)
+        self.app = app
+        # ID3EncodingConverter application
+        self.fileDataHandler = self.app.getFileDataHandler()
+        # handler of file and encoding model
+        self.fileModelHandler = self.app.getFileModelHandler()
+        # set up UI in parent class
+        self.setupUi(self)
+        # set UI element groups for later group operations
+        self.setupUIElementGroups()
+        # set button icons
+        for element in self.buttonIcons:
+            iconName = self.buttonIcons[element]
+            element.setIcon(KIcon(iconName))
+        # set window icon
+        self.setWindowIcon(KIcon('character-set'))
+        # set up file table
+        self.setupFileTable()
+        # set model for encodings comboBox
+        self.setupEncodingCombo()
+        # set up actions
+        self.setupActions()
+        # disable tag view
+        self.setTagViewEnabled(False)
+        # set up QLineEdit palette for marking of conversions to ID3v2
+        self.defaultPalette = QtGui.QPalette(self.v2title.palette())
+        self.goodPalette = QtGui.QPalette(self.defaultPalette)
+        self.goodPalette.setColor(QtGui.QPalette.Base, Qt.green)
+        self.warnPalette = QtGui.QPalette(self.defaultPalette)
+        self.warnPalette.setColor(QtGui.QPalette.Base, Qt.red)
+        # set auto converson to false
+        self.setAutomaticConversion(False)
+        # finally build gui
+        self.setupGUI(KXmlGuiWindow.Default, os.path.join(sys.path [0],
+            "id3encodingconverterui.rc"))
+
+    def setupUIElementGroups(self):
+        """Creates groups of UI elements with same attributes/commands."""
+        # QLineEdits for ID3v1 and ID3v2 (ID3v1 title is a combo box, handle
+        #   outside)
+        self.id3v1Edits = {'Artist': self.v1artist, 'Album': self.v1album,
+            'Genre': self.v1genre, 'Comment': self.v1comment}
+        self.id3v2Edits = {'Title': self.v2title, 'Artist': self.v2artist,
+            'Album': self.v2album, 'Genre': self.v2genre,
+            'Comment': self.v2comment}
+        # buttons for conversion between ID3v1 and ID3v2
+        self.conversionButtons = {'Title': self.convertTitleButton,
+            'Artist': self.convertArtistButton,
+            'Album': self.convertAlbumButton, 'Genre': self.convertGenreButton,
+            'Comment': self.convertCommentButton}
+        # icon buttons in tag view with KDE icon mapping
+        self.buttonIcons = {self.convertAllButton: 'arrow-right-double',
+            self.convertTitleButton: 'arrow-right',
+            self.convertArtistButton: 'arrow-right',
+            self.convertAlbumButton: 'arrow-right',
+            self.convertGenreButton: 'arrow-right',
+            self.convertCommentButton: 'arrow-right',
+            self.v1removeButton: 'trash-empty',
+            self.v2recode: 'character-set'}
+        # labels in tag view
+        self.labels = [self.v1label, self.v2label, self.titlelabel,
+            self.artistlabel, self.albumlabel, self.genrelabel,
+            self.commentlabel]
+
+    def setupFileTable(self):
+        itemModel = self.fileModelHandler.getFileModel()
+        self.treeView.setModel(itemModel)
+        self.fileSelectionModel = QtGui.QItemSelectionModel(itemModel,
+            self.treeView)
+        self.treeView.setSelectionModel(self.fileSelectionModel)
+        # TODO get nice sizing of columns, fitted to length of content
+        #header = QtGui.QHeaderView(Qt.Horizontal, self.treeView)
+        #self.treeView.setHeader(header)
+        self.treeView.setRootIsDecorated(False)
+        #self.treeView.setSortingEnabled(True) # TODO results in buggy handling
+
+    def setupEncodingCombo(self):
+        # set up encoding model for combo box
+        self.setupEncodingModel()
+        #self.encodingModel.sort(0) # TODO doesn't work as expected
+        self.v1title.setModel(self.encodingModel)
+        # create a table as view inside the combo box
+        comboTable = QtGui.QTreeView(self.v1title)
+        comboTable.setModel(self.encodingModel)
+        # set header
+        header = QtGui.QHeaderView(Qt.Horizontal, comboTable)
+        header.setVisible(False)
+        header.setResizeMode(QtGui.QHeaderView.Stretch)
+        comboTable.setHeader(header)
+        comboTable.setRootIsDecorated(False)
+        comboTable.setColumnHidden(2, True)
+        comboTable.setSelectionBehavior(QtGui.QAbstractItemView.SelectRows)
+        self.v1title.setView(comboTable)
+
+    def setupEncodingModel(self):
+        self.encodingDict = self.app.getEncodings()
+        self.encodingIndex = dict([(encoding, idx) for idx, encoding \
+            in enumerate(self.encodingDict.keys())])
+        rowCount = len(self.encodingIndex)
+        self.encodingModel = QtGui.QStandardItemModel(rowCount, 3);
+        self.encodingModel.setHeaderData(0, Qt.Horizontal,
+            QVariant(i18n('Title')))
+        self.encodingModel.setHeaderData(1, Qt.Horizontal,
+            QVariant(i18n('Encoding name')))
+        self.encodingModel.setHeaderData(2, Qt.Horizontal,
+            QVariant(i18n('Encoding')))
+        for encoding in self.encodingIndex:
+            row = self.encodingIndex[encoding]
+            name = self.encodingDict[encoding]
+            self.encodingModel.setItem(row, 1, QtGui.QStandardItem(name))
+            self.encodingModel.setItem(row, 2, QtGui.QStandardItem(encoding))
+
+    def setupActions(self):
+        """Sets up all actions (signal/slot combinations)."""
+        ### menu/toolbar actions
+        # open files
+        addFilesAction = KAction(KIcon("document-open"), i18n("&Add files..."),
+            self)
+        addFilesAction.setShortcut(KStandardShortcut.shortcut(
+            KStandardShortcut.Open))
+        self.actionCollection().addAction("addfiles", addFilesAction)
+        self.connect(addFilesAction, SIGNAL("triggered(bool)"),
+            self.addFiles)
+        addDirAction = KAction(KIcon("folder"), i18n("Add &directory..."),
+            self)
+        self.actionCollection().addAction("adddir", addDirAction)
+        self.connect(addDirAction, SIGNAL("triggered(bool)"),
+            self.addDirectory)
+        # save files
+        self.saveFilesAction = KAction(KIcon("document-save"), i18n("&Save"),
+            self)
+        self.saveFilesAction.setShortcut(KStandardShortcut.shortcut(
+            KStandardShortcut.Save))
+        self.actionCollection().addAction("savefile", self.saveFilesAction)
+        self.connect(self.saveFilesAction, SIGNAL("triggered(bool)"),
+            self.saveFiles)
+        saveAllAction = KAction(KIcon("document-save-all"), i18n("Save &all"),
+            self)
+        self.actionCollection().addAction("saveall", saveAllAction)
+        self.connect(saveAllAction, SIGNAL("triggered(bool)"),
+            self.saveAllPending)
+        # reload
+        self.reloadFilesAction = KAction(KIcon("document-revert"),
+            i18n("&Revert"), self)
+        self.reloadFilesAction.setEnabled(False)
+        self.actionCollection().addAction("reloadfiles", self.reloadFilesAction)
+        self.connect(self.reloadFilesAction, SIGNAL("triggered(bool)"),
+            self.reloadFiles)
+        # disable file actions, no changes to content made yet
+        self.setFileActionEnabled(False)
+        # auto convert
+        autoconvAction = KToggleAction(KIcon("system-run"), # TODO needs proper icon
+            i18n("Auto-&conversion"), self)
+        self.actionCollection().addAction("autoconvert", autoconvAction)
+        self.connect(autoconvAction, SIGNAL("triggered(bool)"),
+            self.setAutomaticConversion)
+
+        ### main window ui elements
+        # combo box
+        self.connect(self.v1title, SIGNAL("activated(int)"),
+            self.encodingSelected)
+        # file tree view
+        self.connect(self.fileSelectionModel, SIGNAL(
+            "currentChanged(const QModelIndex &, const QModelIndex &)"),
+            self.fileSelected)
+        self.connect(self.fileSelectionModel, SIGNAL(
+            "selectionChanged(const QItemSelection &, const QItemSelection &)"),
+            self.updateSelectionDependendActions)
+        # convert buttons
+        self.connect(self.convertAllButton, SIGNAL("clicked(bool)"),
+            self.convertAll)
+        for tag in self.conversionButtons:
+            element = self.conversionButtons[tag]
+            self.connect(element, SIGNAL("clicked(bool)"),
+                partial(self.convertTag, tag))
+        # ID3v2 line edits
+        for tag in self.id3v2Edits.keys():
+            element = self.id3v2Edits[tag]
+            self.connect(element, SIGNAL("editingFinished()"),
+                partial(self.storeTagContent, tag))
+        # standard action
+        KStandardAction.quit(self.app.quit, self.actionCollection())
+        KStandardAction.preferences(self.showSettings, self.actionCollection())
+
+    ### Main action slots
+
+    def addFiles(self):
+        fileList = KFileDialog.getOpenFileNames(KUrl(), "*.mp3|" \
+            + i18n("MP3 files (*.mp3)"), self, 'Add files')
+        fileStringList = [unicode(fileName) for fileName in fileList]
+        if fileStringList:
+            self.fileDataHandler.addFiles(fileStringList)
+
+    def addDirectory(self):
+        def walktree(top=".", suffix=''):
+            """
+            Walk the directory tree, starting from top. Credit to Noah Spurrier
+            and Doug Fort.
+            """
+            names = os.listdir(top)
+            files = []
+            for name in names:
+                try:
+                    st = os.lstat(os.path.join(top, name))
+                except os.error:
+                    continue
+                if stat.S_ISDIR(st.st_mode):
+                    for (newtop, children) in walktree(os.path.join(top, name)):
+                        yield newtop, children
+                elif name.lower().endswith(suffix):
+                    files.append(name)
+            yield top, files
+
+        import os, stat, types, glob
+        dirName = KFileDialog.getExistingDirectory(KUrl(), self,
+            'Add directory')
+        if unicode(dirName):
+            fileList = []
+            for dirName, files in walktree(unicode(dirName), '.mp3'):
+                for fileName in files:
+                    fileList.append(os.path.join(dirName, fileName))
+            self.fileDataHandler.addFiles(fileList)
+
+    def showSettings(self):
+        if(KConfigDialog.showDialog("settings")):
+            return
+        dialog = KConfigDialog(self, "settings", self.app.getPreferences())
+        dialog.setFaceType(KPageDialog.List)
+        dialog.addPage(GuesserSetupWidget(None), i18n("Encoding Guessing"))
+        self.connect(dialog, SIGNAL("settingsChanged(const QString &)"),
+            self.app.readSettings)
+        dialog.show()
+
+    def setAutomaticConversion(self, mode):
+        self.autoConvert = mode
+        if mode:
+            self.fileDataHandler.losslessConversion()
+            # update tag view
+            if self.currentFile:
+                self.loadTagView(self.currentFile)
+            # enable / disable file actions
+            self.recheckFileActions(self.getSelectedIndices())
+
+    def saveFiles(self):
+        """Save files currently selected in file table view."""
+        fileList = []
+        for index in self.getSelectedIndices():
+            fileList.append(self.fileModelHandler.getFileName(index))
+        self.doSave(fileList)
+
+    def saveAllPending(self):
+        """Save all files with pending changes."""
+        self.doSave(self.fileDataHandler.getPendingFiles())
+
+    def reloadFiles(self):
+        # get file names
+        fileList = []
+        for index in self.getSelectedIndices():
+            fileList.append(self.fileModelHandler.getFileName(index))
+        # reload tags
+        self.fileDataHandler.reloadFiles(fileList)
+        # reload tags in file view
+        if self.currentFile and self.currentFile in fileList:
+            self.loadTagView(self.currentFile)
+        self.setFileActionEnabled(False)
+
+    ### Tag view slots
+
+    def fileSelected(self, selectedModelIdx, deselectedModelIdx):
+        # get current index for last selected file to display in tag view
+        row = selectedModelIdx.row()
+        fileName = self.fileModelHandler.getFileName(row)
+        self.loadTagView(fileName)
+
+    def updateSelectionDependendActions(self, selectedItems, deselectedItems):
+        # get all selected indices to check on status of write and reload action
+        rows = set()
+        for index in selectedItems.indexes():
+            rows.add(index.row())
+        self.recheckFileActions(rows)
+
+    def recheckFileActions(self, indices):
+        for index in indices:
+            fileName = self.fileModelHandler.getFileName(index)
+            if self.fileDataHandler.fileInfo(fileName)['status'] == 'modified':
+                self.setFileActionEnabled(True)
+                break
+        else:
+            self.setFileActionEnabled(False)
+
+    def encodingSelected(self, idx):
+        encoding = unicode(self.encodingModel.item(idx, 2).text())
+        self.fileDataHandler.setFileID3v1Encoding(self.currentFile, encoding)
+        if self.autoConvert:
+            if self.fileDataHandler.fileLosslessConversion(self.currentFile):
+                # update tag view for ID3v2
+                id3v2 = self.fileDataHandler.fileInfo(self.currentFile)['id3v2']
+                self.setID3v2DataView(id3v2)
+                # content modified: file actions like save needed now
+                self.setFileActionEnabled(True)
+
+        # update tag view for ID3v1
+        id3v1 = self.fileDataHandler.fileInfo(self.currentFile)['id3v1']
+        self.setID3v1DataView(encoding, id3v1)
+
+    def convertAll(self):
+        """Copies all ID3v1 tags to ID3v2."""
+        for tag in FileDataHandler.SUPPORTED_TAGS:
+            self.convertTag(tag)
+
+    def convertTag(self, tag, clicked=None):
+        """
+        Copies given ID3v1 tag to ID3v2.
+
+        Checks for truncated tags in ID3v1 and takes the ID3v2 instead, if the
+        ID3v1 tag is a prefix of it. Then converts the ID3v2 tag according to
+        the selected encoding for the ID3v1 tag.
+        """
+        # get tag data
+        fileInfo = self.fileDataHandler.fileInfo(self.currentFile)
+        if fileInfo['id3v2']:
+            v2text = fileInfo['id3v2'][tag]
+            text = ID3EncodingConverter.checkTruncatedID3v1(fileInfo, tag)
+            if v2text == text:
+                return
+        else:
+            text = fileInfo['id3v1'][tag].decode(fileInfo['encoding'],
+                'replace')
+        self.id3v2Edits[tag].setText(text)
+        self.fileDataHandler.setFileID3v2Tag(self.currentFile, tag,
+            unicode(text), self.getCurrentEncoding())
+        # update ID3v2 edit field colours as content of ID3v2 might have
+        #   changed
+        self.updateColoring()
+        # content modified: file actions like save needed now
+        self.setFileActionEnabled(True)
+
+    def storeTagContent(self, tag):
+        if self.currentFile:
+            text = self.id3v2Edits[tag].text()
+            self.fileDataHandler.setFileID3v2Tag(self.currentFile, tag,
+                unicode(text))
+            # update ID3v2 edit field colours as content of ID3v2 might have
+            #   changed
+            self.updateColoring()
+            # content modified: file actions like save needed now
+            self.setFileActionEnabled(True)
+
+    ### Worker methods
+
+    def setTagViewEnabled(self, enabled):
+        """Enable all widgets in tag view."""
+        self.v1title.setEnabled(enabled)
+        for element in self.id3v1Edits.values():
+            element.setEnabled(enabled)
+        for element in self.id3v2Edits.values():
+            element.setEnabled(enabled)
+        for element in self.buttonIcons:
+            element.setEnabled(enabled)
+        for element in self.labels:
+            element.setEnabled(enabled)
+
+    def setFileActionEnabled(self, status):
+        self.saveFilesAction.setEnabled(status)
+        self.reloadFilesAction.setEnabled(status)
+
+    def loadTagView(self, fileName):
+        """Loads the tag view with ID3 tag data for the given file."""
+        self.currentFile = fileName
+        # get tag data
+        fileInfo = self.fileDataHandler.fileInfo(fileName)
+        # update encoding chooser combo box
+        if fileInfo['id3v1']:
+            for row, encoding in enumerate(self.encodingDict):
+                name = self.encodingDict[encoding]
+                title = fileInfo['id3v1']['Title'].decode(encoding, 'replace')
+                self.encodingModel.setItem(row, 0, QtGui.QStandardItem(title))
+                self.encodingModel.setItem(row, 1, QtGui.QStandardItem(name))
+        # update tag view; set id3v2 data first, then v1 to update colours
+        self.setID3v2DataView(fileInfo['id3v2'])
+        self.setID3v1DataView(fileInfo['encoding'],
+            fileInfo['id3v1'])
+
+    def setID3v1DataView(self, encoding, id3v1):
+        """Updates the tag view's ID3v1 data. Enables the buttons needed."""
+        for element in self.id3v2Edits.values():
+            element.setEnabled(True)
+        for element in self.labels:
+            element.setEnabled(True)
+        if id3v1:
+            self.v1artist.setText(id3v1['Artist'].decode(encoding, 'replace'))
+            self.v1album.setText(id3v1['Album'].decode(encoding, 'replace'))
+            self.v1genre.setText(id3v1['Genre'].decode(encoding, 'replace'))
+            self.v1comment.setText(id3v1['Comment'].decode(encoding, 'replace'))
+            for element in self.id3v1Edits.values():
+                element.setEnabled(True)
+            self.convertAllButton.setEnabled(True)
+            for element in self.conversionButtons.values():
+                element.setEnabled(True)
+            self.v1removeButton.setEnabled(True)
+            self.v1title.setEnabled(True)
+            # set combo box row index
+            comboIndex = self.encodingIndex[encoding]
+            self.v1title.setCurrentIndex(comboIndex)
+        else:
+            # no ID3v1 tag given, clear fields and disable buttons for
+            #   manipulating ID3v1 data
+            self.v1artist.setText('')
+            self.v1album.setText('')
+            self.v1genre.setText('')
+            self.v1comment.setText('')
+            self.v1title.setCurrentIndex(-1)
+            self.v1title.setEnabled(False)
+            for element in self.id3v1Edits.values():
+                element.setEnabled(False)
+            self.convertAllButton.setEnabled(False)
+            for element in self.conversionButtons.values():
+                element.setEnabled(False)
+            self.v1removeButton.setEnabled(False)
+        # update ID3v2 edit field colours as content of ID3v2 might have changed
+        self.updateColoring()
+
+    def setID3v2DataView(self, id3v2):
+        """Updates the tag view's ID3v2 data. Enables the buttons needed."""
+        if id3v2:
+            self.v2recode.setEnabled(True)
+            self.v2title.setText(id3v2['Title'])
+            self.v2artist.setText(id3v2['Artist'])
+            self.v2album.setText(id3v2['Album'])
+            self.v2genre.setText(id3v2['Genre'])
+            self.v2comment.setText(id3v2['Comment'])
+        else:
+            self.v2recode.setEnabled(False)
+            self.v2title.setText('')
+            self.v2artist.setText('')
+            self.v2album.setText('')
+            self.v2genre.setText('')
+            self.v2comment.setText('')
+
+    def setID3v2EditColor(self, tag, msg='default'):
+        """Set color of QLineEdit for ID3v2 according to given message."""
+        element = self.id3v2Edits[tag]
+        if msg.lower() == 'warn':
+            element.setPalette(self.warnPalette)
+        elif msg.lower() == 'ok':
+            element.setPalette(self.goodPalette)
+        else:
+            element.setPalette(self.defaultPalette)
+
+    def updateColoring(self):
+        """
+        Sets background colouring for ID3v2 line edits to flag data which can
+        be overwritten by ID3v1 data, or tags which contain different
+        information and thus need to be checked by the user.
+        """
+        if self.currentFile:
+            fileInfo = self.fileDataHandler.fileInfo(self.currentFile)
+            if fileInfo['id3v1']:
+                # colourise id3v2 block
+                for tag in FileDataHandler.SUPPORTED_TAGS:
+                    v1tag = fileInfo['id3v1'][tag]
+                    # if ID3v2 exists and ID3v1 is a prefix, copying will not
+                    #   change anything (we fix truncated ID3v1 tags),
+                    #   furthermore of both sides are empty, no changes
+                    if (not fileInfo['id3v2'] and not fileInfo['id3v1'][tag]) \
+                        or (fileInfo['id3v2'] and \
+                        fileInfo['id3v2'][tag].startswith(
+                            v1tag.decode(fileInfo['encoding'], 'replace'))):
+                        self.setID3v2EditColor(tag, 'default')
+                    elif self.app.isLosslessConversion(self.currentFile, tag):
+                        self.setID3v2EditColor(tag, 'ok')
+                    else:
+                        self.setID3v2EditColor(tag, 'warn')
+            else:
+                # no ID3v1 data, nothing to convert, reset coloring
+                for tag in FileDataHandler.SUPPORTED_TAGS:
+                    self.setID3v2EditColor(tag, 'default')
+
+    def getSelectedIndices(self):
+        """Returns the indices of the selected rows from the file table view."""
+        indices = set()
+        for index in self.fileSelectionModel.selectedIndexes():
+            indices.add(index.row())
+        return indices
+
+    def getCurrentEncoding(self):
+        idx = self.v1title.currentIndex()
+        return unicode(self.encodingModel.item(idx, 2).text())
+
+    def doSave(self, fileList):
+        """Save given files and handle errors."""
+        for idx, fileName in enumerate(fileList):
+            if not self.fileDataHandler.saveFile(fileName):
+                msg = unicode(ki18n("The file '%1' couldn't be saved.")\
+                        .subs(fileName).toString())
+                if idx + 1 == len(fileList):
+                    ret = KMessageBox.error(self, msg)
+                else:
+                    ret = KMessageBox.warningContinueCancel(self, msg + "\n" \
+                        + i18n('Continue with other files?'))
+                    if ret != KMessageBox.Continue:
+                        debug('writing aborted')
+                        break
+        self.recheckFileActions(self.getSelectedIndices())
+
+
+class Preferences(KConfigSkeleton):
+
+    textcat_LM_path = QString('/usr/share/libtextcat/LM')
+    language_encoding_pref = QStringList()
+
+    def __init__(self):
+        KConfigSkeleton.__init__(self)
+        self.setCurrentGroup("EncodingGuessing")
+        self.addItemString("Path of Texcat language models",
+            self.textcat_LM_path, QString('/usr/share/libtextcat/LM'))
+        self.addItemStringList("Preferred encodings",
+            self.language_encoding_pref)
+
+
+class FileModelHandler:
+    """Stores the models for the main window's views."""
+
+    # file table model, containing status, file name, title and artist
+    fileModel = None
+
+    def __init__(self, app):
+        self.app = app
+
+    def getFileModel(self):
+        if not self.fileModel:
+            self.fileModel = QtGui.QStandardItemModel(0, 4);
+            self.fileModel.setHeaderData(0, Qt.Horizontal,
+                QVariant(i18n('Status')))
+            self.fileModel.setHeaderData(1, Qt.Horizontal,
+                QVariant(i18n('File')))
+            self.fileModel.setHeaderData(2, Qt.Horizontal,
+                QVariant(i18n('Title')))
+            self.fileModel.setHeaderData(3, Qt.Horizontal,
+                QVariant(i18n('Artist')))
+            self.fileModelNameIndex = {}
+        return self.fileModel
+
+    def addToFileModel(self, fileName):
+        idx = self.fileModel.rowCount()
+        self.fileModel.insertRows(idx, 1)
+        self.fileModel.setItem(idx, 1, QtGui.QStandardItem(fileName))
+        self.fileModelNameIndex[fileName] = idx
+
+    def updateFileModel(self, fileName):
+        fileInfo = self.app.getFileDataHandler().fileInfo(fileName)
+        # get title and artist
+        if fileInfo['id3v2']:
+            title = fileInfo['id3v2']['Title']
+            artist = fileInfo['id3v2']['Artist']
+        elif fileInfo['id3v1']:
+            # show ID3v1 how it would be seen in a standard setup
+            title = fileInfo['id3v1']['Title'].decode('latin1', 'replace')
+            artist = fileInfo['id3v1']['Artist'].decode('latin1', 'replace')
+        else:
+            title = artist = ''
+        if fileInfo['status'] == 'modified':
+            status = QtGui.QStandardItem(KIcon("document-save"), '')
+            status.setAccessibleText(i18n('file modified'))
+        elif fileInfo['status'] == 'saved':
+            status = QtGui.QStandardItem(KIcon("dialog-ok-apply"), '')
+            status.setAccessibleText(i18n('file saved'))
+        else:
+            status = QtGui.QStandardItem('')
+        # write to model
+        row = self.fileModelNameIndex[fileName]
+        self.fileModel.setItem(row, 0, status)
+        self.fileModel.setItem(row, 2, QtGui.QStandardItem(title))
+        self.fileModel.setItem(row, 3, QtGui.QStandardItem(artist))
+
+    def getFileName(self, row):
+        return unicode(self.fileModel.item(row, 1).text())
+
+
+class FileDataHandler:
+    """Class handling file reading and writing."""
+
+    # list of supported ID3 tags
+    SUPPORTED_TAGS = ['Title', 'Artist', 'Album', 'Genre', 'Comment']
+
+    # file data, containing encoding, id3v1 and id3v2 tags, save status and
+    #   model index (row)
+    fileData = None
+
+    def __init__(self, app):
+        self.app = app
+        self.fileData = {}
+
+    def addFiles(self, fileList):
+        guessEncodingSet = set()
+        for fileName in fileList:
+            if fileName not in self.fileData:
+                debug(u'adding ' + fileName)
+                # insert into model
+                self.app.getFileModelHandler().addToFileModel(fileName)
+                # get tag info
+                self.loadFileTags(fileName)
+                guessEncodingSet.add(fileName)
+        # guess encoding for id3v1
+        self._guessEncodingForFiles(guessEncodingSet)
+
+    def reloadFiles(self, fileList):
+        for fileName in fileList:
+            self.loadFileTags(fileName)
+        # guess encoding for id3v1
+        self._guessEncodingForFiles(fileList)
+
+    def loadFileTags(self, fileName):
+        self.fileData[fileName] = {}
+        tempFile = self.app.getLocalFile(fileName)
+        if not tempFile:
+            return
+        f = tagpy.FileRef(tempFile.encode(system_encoding))
+        id3v1 = self._getID3v1TagInfo(f)
+        id3v2 = self._getID3v2TagInfo(f)
+        self.app.releaseLocalFile(fileName)
+        # encoding of ID3v1 tags
+        self.fileData[fileName]['encoding'] = 'latin1'
+        # ID3v1 tag dictionary
+        self.fileData[fileName]['id3v1'] = id3v1
+        # ID3v2 tag dictionary
+        self.fileData[fileName]['id3v2'] = id3v2
+        # try to get encoding for which both tag sets are equal
+        self.fileData[fileName]['equalityEncoding'] = {}
+        if id3v1 and id3v2:
+            for tag in FileDataHandler.SUPPORTED_TAGS:
+                self.fileData[fileName]['equalityEncoding'][tag] = \
+                    self.matchID3v1EncodingToID3v2(id3v1, id3v2, tag)
+                # TODO make sure we don't get different encodings?
+        # change/save status
+        self.fileData[fileName]['status'] = 'default'
+        self.app.getFileModelHandler().updateFileModel(fileName)
+
+    def setFileID3v1Encoding(self, fileName, encoding):
+        self.fileData[fileName]['encoding'] = encoding
+
+    def setFileID3v2Tag(self, fileName, tag, content, encoding=None):
+        if not self.fileData[fileName]['id3v2']:
+            # initialise ID3v2 tag
+            for t in self.SUPPORTED_TAGS:
+                self.fileData[fileName]['id3v2'][t] = ''
+                self.fileData[fileName]['equalityEncoding'][t] = None
+        if encoding:
+            self.fileData[fileName]['equalityEncoding'][tag] = encoding
+        self.fileData[fileName]['id3v2'][tag] = content
+        self.fileData[fileName]['status'] = 'modified'
+        self.app.getFileModelHandler().updateFileModel(fileName)
+
+    def fileInfo(self, fileName):
+        return self.fileData[fileName]
+
+    def _guessEncodingForFiles(self, fileNames):
+        # guess encoding for id3v1 and write model data
+        encodings = self.app.getEncodings()
+        # for later matching against file name and ID3v2, assume latin1 is
+        #   always wrong
+        if 'latin1' in encodings:
+            del encodings['latin1']
+        for fileName in fileNames:
+            id3v1 = self.fileData[fileName]['id3v1']
+            if not id3v1:
+                continue
+            id3v2 = self.fileData[fileName]['id3v2']
+            encoding = None
+            # TODO bad estimate, as ID3v2 can have badly encoded strings, too. Use later in weighted estimation
+            ## if ID3v1 and ID3v2 are equal on an encoding take it
+            #if self.fileData[fileName]['equalityEncoding'] \
+                #and self.fileData[fileName]['equalityEncoding']['Title']:
+                #encoding = self.fileData[fileName]['equalityEncoding']['Title']
+            if not encoding:
+                if id3v1['Title']:
+                    # try all encodings and title tag, try match with file name
+                    for encoding in encodings:
+                        if fileName.find(id3v1['Title'].decode(encoding,
+                            'replace')) >= 0:
+                            debug("Matched title to file name under encoding " \
+                                + "'" + encoding + "' for file '" + fileName \
+                                + "'")
+                            break
+                else:
+                    encoding = self.app.detectEncoding(
+                        "\n".join(id3v1.values()))
+            self.fileData[fileName]['encoding'] = encoding
+            self.app.getFileModelHandler().updateFileModel(fileName)
+
+    def matchID3v1EncodingToID3v2(self, id3v1, id3v2, tag):
+        """
+        Try to match tags from ID3v1 to ID3v2 by finding the proper encoding.
+        """
+        # try to find encoding where tag sets match on all tags
+        for encoding in self.app.getEncodings():
+            try:
+                if id3v1[tag] \
+                    and id3v2[tag].startswith(id3v1[tag].decode(encoding)):
+                    return encoding
+            except UnicodeDecodeError:
+                # ignore encodings which don't match
+                pass
+        return
+
+    def losslessConversion(self):
+        for fileName in self.fileData:
+            self.fileLosslessConversion(fileName)
+
+    def fileLosslessConversion(self, fileName):
+        """
+        Converts ID3v1 tags to ID3v2 for the given file as long as no data in
+        ID3v2 can be lost.
+        """
+        fileInfo = self.fileData[fileName]
+        if not fileInfo['id3v1']:
+            # nothing to convert from
+            return
+        if not fileInfo['id3v2']:
+            for tag in FileDataHandler.SUPPORTED_TAGS:
+                fileInfo['id3v2'][tag] = \
+                    fileInfo['id3v1'][tag].decode(fileInfo['encoding'],
+                        'replace')
+                fileInfo['equalityEncoding'][tag] = fileInfo['encoding']
+            modified = True
+        else:
+            modified = False
+            for tag in FileDataHandler.SUPPORTED_TAGS:
+                if not self.app.isLosslessConversion(fileName, tag):
+                    break
+            else:
+                for tag in FileDataHandler.SUPPORTED_TAGS:
+                    if fileInfo['id3v1'][tag].decode(fileInfo['encoding'],
+                        'replace') != fileInfo['id3v2'][tag]:
+                        text = ID3EncodingConverter.checkTruncatedID3v1(
+                            fileInfo, tag)
+                        fileInfo['id3v2'][tag] = text
+                        fileInfo['equalityEncoding'][tag] = fileInfo['encoding']
+                        modified = True
+        if modified:
+            fileInfo['status'] = 'modified'
+            self.app.getFileModelHandler().updateFileModel(fileName)
+        return modified
+
+    def getPendingFiles(self):
+        fileList = []
+        for fileName in self.fileData:
+            if self.fileData[fileName]['status'] == 'modified':
+                fileList.append(fileName)
+        return fileList
+
+    def saveFile(self, fileName):
+        """Save file for the given name."""
+        id3v2 = self.fileData[fileName]['id3v2']
+        f = tagpy.FileRef(unicode(fileName).encode(system_encoding))
+        if f.isNull():
+            raise IOError("Unable to open file for music tag info")
+        self._setID3v2TagInfo(f, id3v2)
+        ret = f.save()
+        # write second time because of tagpy/taglib bug, TODO still needed?
+        f = tagpy.FileRef(unicode(fileName).encode(system_encoding))
+        self._setID3v2TagInfo(f, id3v2)
+        ret = f.save()
+        if not ret:
+            debug("Unable to write music tag info for file '" + fileName + "'")
+            return False
+        else:
+            debug("Wrote ID3v2 data for file '" + fileName + "': " \
+                + unicode(id3v2))
+            # save status
+            self.fileData[fileName]['status'] = 'saved'
+            self.app.getFileModelHandler().updateFileModel(fileName)
+            return True
+
+    def _getID3v1TagInfo(self, fileRef):
+        """Returns the ID3v1 tag dictionary."""
+        ID3v1TagInfo = {}
+        tagRefID3v1 = fileRef.file().ID3v1Tag(False)
+        if tagRefID3v1:
+            ID3v1TagInfo['Artist'] = tagRefID3v1.artist.encode("latin1").strip()
+            ID3v1TagInfo['Title'] = tagRefID3v1.title.encode("latin1").strip()
+            ID3v1TagInfo['Album'] = tagRefID3v1.album.encode("latin1").strip()
+            ID3v1TagInfo['Comment'] = tagRefID3v1.comment.encode("latin1")\
+                .strip()
+            ID3v1TagInfo['Genre'] = tagRefID3v1.genre.encode("latin1").strip()
+        return ID3v1TagInfo
+
+    def _getID3v2TagInfo(self, fileRef):
+        """Returns the ID3v2 tag dictionary."""
+        ID3v2TagInfo = {}
+        tagRefID3v2 = fileRef.file().ID3v2Tag(False)
+        if tagRefID3v2:
+            ID3v2TagInfo['Artist'] = tagRefID3v2.artist.strip()
+            ID3v2TagInfo['Title'] = tagRefID3v2.title.strip()
+            ID3v2TagInfo['Album'] = tagRefID3v2.album.strip()
+            ID3v2TagInfo['Comment'] = tagRefID3v2.comment.strip()
+            ID3v2TagInfo['Genre'] = tagRefID3v2.genre.strip()
+        return ID3v2TagInfo
+
+    def _setID3v2TagInfo(self, fileRef, id3v2):
+        """Writes the ID3v2 tag info to the given file object."""
+        tagRefID3v2 = fileRef.file().ID3v2Tag(True)
+        tagRefID3v2.title = id3v2['Title']
+        tagRefID3v2.artist = id3v2['Artist']
+        tagRefID3v2.album = id3v2['Album']
+        tagRefID3v2.genre = id3v2['Genre']
+        tagRefID3v2.comment = id3v2['Comment']
+
+
+class ID3EncodingConverter(KApplication):
+    """ The main application """
+
+    def __init__(self):
+        KApplication.__init__(self)
+        # tempFiles keeps track of files opened by the Kio::NetAccess module
+        self.tempFiles = {}
+        self.preferences = Preferences()
+        self.readSettings()
+        self.fileDataHandler = FileDataHandler(self)
+        self.fileModelHandler = FileModelHandler(self)
+        self.mainWindow = MainWindow(self)
+
+    def getMainWindow(self):
+        return self.mainWindow
+
+    def getFileModelHandler(self):
+        return self.fileModelHandler
+
+    def getFileDataHandler(self):
+        return self.fileDataHandler
+
+    def getPreferences(self):
+        return self.preferences
+
+    def readSettings(self):
+        debug("reading settings")
+        #config = self.sessionConfig() # TODO KConfig()
+        #textcatGroup = config.group("Textcat")
+        #self.textcat_LM_path = \
+            #unicode(textcatGroup.readEntry("textcat_LM_path"))
+        #if not self.textcat_LM_path:
+            #self.textcat_LM_path = '/usr/share/libtextcat/LM'
+        #languageGroup = config.group("Language")
+        #self.language_encoding_pref = \
+            #unicode(languageGroup.readEntry("language_encoding_pref"))
+        #generalGroup = config.group("General")
+        ##self.keepLogFile = \ # TODO keep a log file?
+            ##str(generalGroup.readEntry("keep_log_file")).find('True') >= 0
+        ###self.keepLogFile = True
+        ##debug("config read settings: textcat_LM_path='" \
+            ##+ self.textcat_LM_path + "', language_encoding_pref='" \
+            ##+ self.language_encoding_pref + "', keep log file: " \
+            ##+ str(self.keepLogFile))
+        textcatPath = unicode(self.preferences.textcat_LM_path)
+        language_order = [unicode(lang) for lang in \
+            self.preferences.language_encoding_pref]
+        debug("using config settings: textcat_LM_path: '" + textcatPath \
+            + "', language_encoding_pref: '" + "', '".join(language_order) 
+            + "'")
+
+        # set up encoding guesser
+        self.encodingGuesser = encoding.EncodingGuesser(textcatPath,
+            language_order=language_order)
+
+    #def saveSettings(self): # TODO
+        #config = KConfig()
+        #textcatGroup = config.group("Textcat")
+        #textcatGroup.writePathEntry("textcat_LM_path", self.textcat_LM_path)
+        #languageGroup = config.group("Language")
+        #languageGroup.writeEntry("language_encoding_pref",
+            #self.language_encoding_pref)
+        #generalGroup = config.group("General")
+        #generalGroup.writeEntry("keep_log_file", str(self.keepLogFile))
+
+    def getLocalFile(self, fileName):
+        """
+        Makes a file with the given url readable locally by downloading it into
+        a temp file.
+        On closing of file releaseLocalFile() needs to be calles on the file.
+        """
+        tmpFile = QString()
+        if KIO.NetAccess.download(KUrl(fileName), tmpFile, self.mainWindow):
+            self.tempFiles[fileName] = unicode(tmpFile)
+            return self.tempFiles[fileName]
+        else:
+            KMessageBox.error(self.mainWindow, KIO.NetAccess.lastErrorString())
+
+    def releaseLocalFile(self, fileName):
+        """
+        Releases the local copy (temp file) created by getLocalFile() for the
+        given file.
+        """
+        tmpFile = self.tempFiles[fileName]
+        KIO.NetAccess.removeTempFile(tmpFile)
+        del self.tempFiles[fileName]
+
+    def detectEncoding(self, text):
+        """Detects the encoding for the given text."""
+        try:
+            detectedLang, detectedEnc = self.encodingGuesser.classify(text)
+            if detectedEnc == 'ascii':
+                # ascii is included in latin1 but not in our encoding list given
+                #   to the user
+                detectedEnc = 'latin1'
+            debug("detected language '" + detectedLang + "', encoding '" \
+                + detectedEnc + "'")
+        except:
+            detectedEnc = 'latin1'
+            debug("language and encoding guessing failed, assuming '" \
+                + detectedEnc + "'")
+        return detectedEnc
+
+    def getEncodings(self):
+        """
+        Returns a dictionary with all supported encodings and a name
+        representation.
+        """
+        # TODO check if the encoding module really needs to return this
+        #   direction
+        encodings = {}
+        encodingNames = self.encodingGuesser.getSupportedEncodingDict()
+        for encodingName in encodingNames:
+            encodings[encodingNames[encodingName]] = encodingName
+        return encodings
+
+    def isLosslessConversion(self, fileName, tag):
+        """
+        Returns True if the ID3v1 tag can be converted to ID3v2 without
+        overwriting other data in ID3v2.
+        """
+        fileInfo = self.fileDataHandler.fileInfo(fileName)
+        # if no ID3v2 tag exists, or the tag is already converted automatically
+        #   or the latin1 ID3v1 tag is a prefix of the ID3v2 tag (if we want to
+        #   convert it means, that the given ID3v2 tag is misencoded too
+        if not fileInfo['id3v2'] or not fileInfo['id3v2'][tag]:
+            return True
+        elif fileInfo['id3v2'][tag].startswith(
+            fileInfo['id3v1'][tag].decode(fileInfo['encoding'], 'replace')):
+            return True
+        else:
+            if fileInfo['equalityEncoding'][tag]:
+                # if ID3v1 and ID3v2 are equal under an encoding, then
+                #   conversion will not overwrite other information, but only an
+                #   encoded instance of the data
+                return fileInfo['id3v2'][tag]\
+                    .encode(fileInfo['equalityEncoding'][tag], 'replace')\
+                    .startswith(fileInfo['id3v1'][tag])
+            else:
+                return False
+
+    def testTruncatedID3v1(fileInfo, tag):
+        # if no ID3v2 tag give, there's no way to check if the string was
+        #   truncated, further more take out empty strings
+        if not fileInfo['id3v2'] or not fileInfo['id3v1'][tag]:
+            return fileInfo['id3v1'][tag]
+        # check if ID3v1 is a prefix under current encoding
+        v1text = fileInfo['id3v1'][tag].decode(fileInfo['encoding'], 'replace')
+        v2text = fileInfo['id3v2'][tag]
+        if len(v1text) < len(v2text) and v2text.startswith(v1text):
+            debug("ID3v1 tag with '" + v1text + "' truncated, using " \
+                + "ID3v2 string '" + v2text + "'")
+            return v2text
+        # if an encoding exists under which both tag sets are equal:
+        #   check if ID3v1 tag content is still a prefix of current ID3v2 tag
+        if fileInfo['equalityEncoding'][tag]:
+            # use current encoding for ID3v1, ID3v2 has to be recoded
+            #   first restore wrong recoded string by encoding, then decode to
+            #   current encoding
+            v2text = fileInfo['id3v2'][tag]\
+                .encode(fileInfo['equalityEncoding'][tag], 'replace')\
+                .decode(fileInfo['encoding'], 'replace')
+            if len(v1text) < len(v2text) and v2text.startswith(v1text):
+                debug("ID3v1 tag with '" + v1text + "' truncated, using " \
+                    + "recoded ID3v2 string '" + v2text + "'")
+                return v2text
+        return v1text
+    checkTruncatedID3v1 = staticmethod(testTruncatedID3v1)
+
+
+language, system_encoding = locale.getdefaultlocale()
+
+def debug(message):
+    if doDebug:
+        print >>sys.stderr, message.encode(system_encoding)
+
+#--------------- main ------------------
+
+appName     = "id3encodingconverter"
+catalog     = ""
+programName = ki18n("ID3EncodingConverter")
+version     = "0.1alpha"
+description = ki18n("A simple ID3 tag viewer with support for conversion of" \
+    + " different character sets.")
+license     = KAboutData.License_GPL
+copyright   = ki18n("(c) 2008 Christoph Burgmer")
+text        = ki18n("Did you ever wonder why your favourite MP3 player" \
+    + " doesn't show tags correctly for both your Japanese and Russian music?" \
+    + " This is probably due to the fact that somebody encoded the music tags" \
+    + " in ID3v1 without telling you the encoding used. Now all you can do is" \
+    + " guess what encoding it was and convert the audio tags to ID3v2 using" \
+    + " Unicode.\n" \
+    + "This small application helps you by showing both ID3v1 and ID3v2 tags" \
+    + " together and lets you copy the converted tags to ID3v2 once you chose" \
+    + " the correct encoding. By showing lines in red colour it will help you" \
+    + " avoid overwriting differing entries.")
+
+homePage    = "http://code.google.com/p/id3encodingconverter/"
+bugEmail    = "cburgmer@ira.uka.de"
+
+aboutData = KAboutData(appName, catalog, programName, version, description,
+    license, copyright, text, homePage, bugEmail)
+aboutData.addAuthor(ki18n("Christoph Burgmer"), ki18n("Developer"),
+    "cburgmer@ira.uka.de", "http://www.stud.uni-karlsruhe.de/~uyhc")
+#aboutData.setProgramLogo(QVariant(...)) # TODO get a specialised logo
+
+KCmdLineArgs.init(sys.argv, aboutData)
+options = KCmdLineOptions()
+options.add("+[file1, [file2, ...]]", ki18n("Files to open"))
+KCmdLineArgs.addCmdLineOptions(options)
+
+args = KCmdLineArgs.parsedArgs()
+
+app = ID3EncodingConverter()
+
+# get file names from the command line
+fileList = []
+for i in range(0, args.count()):
+    fileList.append(unicode(args.url(i).pathOrUrl()))
+app.getFileDataHandler().addFiles(fileList)
+
+app.getMainWindow().show()
+app.exec_()
