@@ -1,0 +1,34 @@
+#summary List of open issues and known bugs
+#labels Featured,Phase-Design
+
+= Introduction =
+
+This page acts as a "To Do" list and collects points that need to be resolved, some urgent, some being of rather minor importance.
+
+= Concept =
+  * Is arrangement into ID3v1 and ID3v2 good? ID3v2 supports Unicode only from Version 3 on, so ID3v2 doesn't actually mean having Unicode generally. Rather move away from comparison of the two versions and let user select encoding of one tag set and make editing possible. If more than one tag set exists, warn user and allow choosing of preferred version.
+
+= Functions =
+
+  * Python package including LICENSE, INSTALL, TODO and CHANGELOG
+  * Implement function to correct ID3v2 encoding (might be unneeded, see conceptual question above).
+  * Implement function to remove ID3v1 tag, no use if Unicode needed, but we want to keep it by default, as it allows to fix conversion errors later (really need this then?).
+  * Improve guessing, use all possible methods together (match to ID3v2, match to file name, ngrams) and weight.
+  * Improve guessing, group songs by artist and album, assume same encoding for all (maybe configurable).
+  * Inform user by dialog that auto conversion still needs user to cross check, make dialog a "don't tell me again" type one.
+  * Get a progress bar into the status bar and show process on loading and writing of tags.
+  * Make file tag reading, writing and guessing threaded, keep UI responsive.
+  * Implement action to remove files from list.
+
+= Other =
+  * Document source code.
+  * Configuration dialog isn't shown.
+  * Lack of reponsiveness of combo box; once an item was selected by clicking somewhere else and moving the mouse to an entry where the button is released then entries can't be selected by simply clicking any more.
+  * Menu text doesn't appear by default, when fixing this, it appears in white.
+  * Find a way to allow sorting. Currently it mixes up the indices to the file name mapping and thus is unusable.
+  * Sort encoding combo box by encoding name (language group)
+  * Get proper size of file table view to fit window.
+  * Specialized icon for project, also needed in the "About" dialog.
+  * Small handbook.
+  * Tooltips
+  * Proper icon for auto-conversion
