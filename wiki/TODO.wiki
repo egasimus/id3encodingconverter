@@ -19,6 +19,8 @@ This page acts as a "To Do" list and collects points that need to be resolved, s
   * Get a progress bar into the status bar and show process on loading and writing of tags.
   * Make file tag reading, writing and guessing threaded, keep UI responsive.
   * Implement action to remove files from list.
+  * Amarok plugin.
+  * Improve encoding.py, substitute top-n with better scoring.
 
 = Other =
   * Document source code.
