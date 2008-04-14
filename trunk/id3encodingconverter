@@ -1,8 +1,13 @@
-#!/usr/bin/env python
+#!/usr/bin/python
 # -*- coding: utf8 -*-
 """
 A simple ID3 tag viewer with support for conversion of different character sets.
 
+ID3EncodingConverter is a simple ID3 tag viewer for KDE written in Python which
+supports conversion of tags from different character sets to Unicode with ID3v2.
+Its goal is fast and simple conversion for multiple files, letting the user
+compare between ID3v1 and ID3v2 tags and choose the correct encoding.
+ 
 Features
   * Conversion of ID3v1 to ID3v2 tags
   * Simple side by side comparison of ID3v1 and ID3v2 tags
@@ -21,7 +26,7 @@ Dependencies
   * TagLib, Audio Meta-Data Library
   * TagPy, Python bindings for !TagLib
 
-See file TODO for a list of issues.
+See TODO for a list of issues.
 
 Copyright (C) 2008 Christoph Burgmer
 (christoph.burgmer@stud.uni-karlsruhe.de)
@@ -40,6 +45,13 @@ You should have received a copy of the GNU General Public License
 along with this program; if not, write to the Free Software
 Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 """
+
+__author__ = "Christoph Burgmer <christoph.burgmer@stud.uni-karlsruhe.de>"
+__license__ = 'GNU General Public License v2'
+__url__ = "http://code.google.com/p/id3encodingconverter"
+__version__ = "0.1alpha"
+
+xmlGuiFile="id3encodingconverterui.rc"
 
 import sys
 import os
@@ -161,7 +173,7 @@ class MainWindow(KXmlGuiWindow, ID3EncodingConverterUI.Ui_MainWindow):
         self.setAutomaticConversion(False)
         # finally build gui
         self.setupGUI(KXmlGuiWindow.Default, os.path.join(sys.path [0],
-            "id3encodingconverterui.rc"))
+            xmlGuiFile))
 
     def setupUIElementGroups(self):
         """Creates groups of UI elements with same attributes/commands."""
@@ -1106,7 +1118,7 @@ class ID3EncodingConverter(KApplication):
     checkTruncatedID3v1 = staticmethod(testTruncatedID3v1)
 
 
-language, system_encoding = locale.getdefaultlocale()
+_, system_encoding = locale.getdefaultlocale()
 
 def debug(message):
     if doDebug:
@@ -1122,24 +1134,20 @@ description = ki18n("A simple ID3 tag viewer with support for conversion of" \
     + " different character sets.")
 license     = KAboutData.License_GPL
 copyright   = ki18n("(c) 2008 Christoph Burgmer")
-text        = ki18n("Did you ever wonder why your favourite MP3 player" \
-    + " doesn't show tags correctly for both your Japanese and Russian music?" \
-    + " This is probably due to the fact that somebody encoded the music tags" \
-    + " in ID3v1 without telling you the encoding used. Now all you can do is" \
-    + " guess what encoding it was and convert the audio tags to ID3v2 using" \
-    + " Unicode.\n" \
-    + "This small application helps you by showing both ID3v1 and ID3v2 tags" \
-    + " together and lets you copy the converted tags to ID3v2 once you chose" \
-    + " the correct encoding. By showing lines in red colour it will help you" \
-    + " avoid overwriting differing entries.")
+text        = ki18n("ID3EncodingConverter is a simple ID3 tag viewer for KDE " \
+    + "written in Python which supports conversion of tags from different " \
+    + "character sets to Unicode with ID3v2. Its goal is fast and simple " \
+    + "conversion for multiple files, letting the user compare between ID3v1 " \
+    + "and ID3v2 tags and choose the correct encoding.")
 
-homePage    = "http://code.google.com/p/id3encodingconverter/"
-bugEmail    = "cburgmer@ira.uka.de"
+homePage    = __url__
+bugEmail    = "christoph.burgmer@stud.uni-karlsruhe.de"
 
 aboutData = KAboutData(appName, catalog, programName, version, description,
     license, copyright, text, homePage, bugEmail)
 aboutData.addAuthor(ki18n("Christoph Burgmer"), ki18n("Developer"),
-    "cburgmer@ira.uka.de", "http://www.stud.uni-karlsruhe.de/~uyhc")
+    "christoph.burgmer@stud.uni-karlsruhe.de",
+    "http://www.stud.uni-karlsruhe.de/~uyhc")
 #aboutData.setProgramLogo(QVariant(...)) # TODO get a specialised logo
 
 KCmdLineArgs.init(sys.argv, aboutData)
