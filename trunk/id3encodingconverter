@@ -51,8 +51,6 @@ __license__ = 'GNU General Public License v2'
 __url__ = "http://code.google.com/p/id3encodingconverter"
 __version__ = "0.1alpha"
 
-xmlGuiFile="id3encodingconverterui.rc"
-
 import sys
 import os
 import glob
@@ -172,8 +170,7 @@ class MainWindow(KXmlGuiWindow, ID3EncodingConverterUI.Ui_MainWindow):
         # set auto converson to false
         self.setAutomaticConversion(False)
         # finally build gui
-        self.setupGUI(KXmlGuiWindow.Default, os.path.join(sys.path [0],
-            xmlGuiFile))
+        self.setupGUI(KXmlGuiWindow.Default)
 
     def setupUIElementGroups(self):
         """Creates groups of UI elements with same attributes/commands."""
@@ -1037,18 +1034,23 @@ class ID3EncodingConverter(KApplication):
 
     def detectEncoding(self, text):
         """Detects the encoding for the given text."""
-        try:
-            detectedLang, detectedEnc = self.encodingGuesser.classify(text)
-            if detectedEnc == 'ascii':
-                # ascii is included in latin1 but not in our encoding list given
-                #   to the user
+        if self.encodingGuesser.textcatAvailable():
+            try:
+                detectedLang, detectedEnc = self.encodingGuesser.classify(text)
+                if detectedEnc == 'ascii':
+                    # ascii is included in latin1 but not in our encoding list
+                    #   given to the user
+                    detectedEnc = 'latin1'
+                debug("detected language '" + detectedLang + "', encoding '" \
+                    + detectedEnc + "'")
+            except encoding.EncodingUnknownError:
                 detectedEnc = 'latin1'
-            debug("detected language '" + detectedLang + "', encoding '" \
-                + detectedEnc + "'")
-        except:
+                debug("language and encoding guessing failed, assuming '" \
+                    + detectedEnc + "'")
+        else:
             detectedEnc = 'latin1'
-            debug("language and encoding guessing failed, assuming '" \
-                + detectedEnc + "'")
+            debug("no encoding guessing possible, assuming '" + detectedEnc \
+                + "'")
         return detectedEnc
 
     def getEncodings(self):
