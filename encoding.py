@@ -23,6 +23,8 @@
 #   - Updated documentation
 #   - Added Textcat languages/encoding pairs when know
 #   - Changed code as to potentially work without Textcat
+# * 0.4, 2008/04/15
+#   - Fixed handling of missing textcat language models
 #
 #This program is distributed under GNU General Public License.
 #
@@ -40,12 +42,8 @@
 #along with this program; if not, write to the Free Software
 #Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
 
-global textcatAvailable
-try:
-    import ngram
-    textcatAvailable = 1
-except:
-    textcatAvailable = 0
+class EncodingUnknownError(Exception):
+    pass
 
 class EncodingGuesser:
     # encoding name to languages mapping (encoding names follow textcat scheme,
@@ -75,9 +73,13 @@ class EncodingGuesser:
 
     def __init__ (self, folder="/usr/share/libtextcat/LM", language_order=[]):
         # initialize n-gram language detector
-        if self.textcatAvailable():
+        try:
+            import ngram
             self.languageDetector = ngram.NGram(folder,
                 language_order=language_order)
+            self._textcatAvailable = True
+        except:
+            self._textcatAvailable = False
 
         # create list of available encoding/language pairs
         self.encodingList = []
@@ -119,7 +121,7 @@ class EncodingGuesser:
     def textcatAvailable(self):
         """ Returns true if the textcat library is available and the classify()
             functionality can be used. """
-        return textcatAvailable
+        return self._textcatAvailable
 
     def _splitLangEnc(self, languageName):
         """ Splits the language name and the encoding off from the name given by
@@ -144,7 +146,7 @@ class EncodingGuesser:
                 # if our table doesn't include the encoding for the textcat
                 # language raise an error and wait for somebody to tell us which
                 # encoding this is to add it to self.defaultEncodings
-                raise Exception("Encoding unknown")
+                raise EncodingUnknownError("Encoding unknown")
         return realLang, encoding
 
     def getDescriptiveEncodingName(self, language, encoding):

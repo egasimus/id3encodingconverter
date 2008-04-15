@@ -3,6 +3,7 @@
 
 from distutils.core import setup
 import re
+import os
 
 FULLAUTHOR = "Christoph Burgmer <christoph.burgmer@stud.uni-karlsruhe.de>"
 LICENSE = 'GNU General Public License v2'
@@ -10,6 +11,12 @@ URL = "http://code.google.com/p/id3encodingconverter"
 VERSION = "0.1alpha"
 
 (AUTHOR, EMAIL) = re.match('^(.*?)\s*<(.*)>$', FULLAUTHOR).groups()
+
+# get target directories for kde4 files
+kde4DataTarget = os.popen("kde4-config --expandvars --install data")\
+    .read().strip()
+kde4DesktopTarget = os.popen("kde4-config --expandvars --install apps")\
+    .read().strip()
 
 setup(name='id3encodingconverter',
     version=VERSION,
@@ -28,8 +35,11 @@ setup(name='id3encodingconverter',
     packages=[],
     package_data={},
     scripts=['id3encodingconverter'],
-    data_files=[('share/apps/id3encodingconverter/', ['id3encodingconverterui.rc']),
-        ('share/doc/id3encodingconverter/', ['TODO'])], # 'README', 'changelog', 'COPYING', 
+    data_files=[(os.path.join(kde4DataTarget, 'id3encodingconverter'),
+            ['id3encodingconverterui.rc']),
+        (os.path.join(kde4DesktopTarget, 'id3encodingconverter'),
+                 ['id3encodingconverter.desktop']),
+        ('share/doc/id3encodingconverter/', ['TODO'])], # 'README', 'changelog', 'COPYING'
     license=LICENSE,
     classifiers=['Development Status :: 3 - Alpha',
         'Operating System :: OS Independent',
