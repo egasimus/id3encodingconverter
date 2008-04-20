@@ -3,3 +3,7 @@ include ID3EncodingConverterGuessingSetup.ui
 include ID3EncodingConverter.ui
 include TODO
 include id3encodingconverter.desktop
+include data/*
+include po/*
+include mo/*
+include *.png

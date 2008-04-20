@@ -17,6 +17,8 @@ kde4DataTarget = os.popen("kde4-config --expandvars --install data")\
     .read().strip()
 kde4DesktopTarget = os.popen("kde4-config --expandvars --install apps")\
     .read().strip()
+kde4IconTarget = os.popen("kde4-config --expandvars --install icon")\
+    .read().strip()
 
 setup(name='id3encodingconverter',
     version=VERSION,
@@ -36,10 +38,11 @@ setup(name='id3encodingconverter',
     package_data={},
     scripts=['id3encodingconverter'],
     data_files=[(os.path.join(kde4DataTarget, 'id3encodingconverter'),
-            ['id3encodingconverterui.rc']),
+            ['id3encodingconverterui.rc', 'id3encodingconverter_about.png']),
         (os.path.join(kde4DesktopTarget, 'id3encodingconverter'),
                  ['id3encodingconverter.desktop']),
-        ('share/doc/id3encodingconverter/', ['TODO'])], # 'README', 'changelog', 'COPYING'
+        ('share/doc/id3encodingconverter/', ['TODO']), # 'README', 'changelog', 'COPYING'
+        (kde4IconTarget, ['id3encodingconverter.png']),],
     license=LICENSE,
     classifiers=['Development Status :: 3 - Alpha',
         'Operating System :: OS Independent',
