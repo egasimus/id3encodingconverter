@@ -10,27 +10,25 @@ This page acts as a "To Do" list and collects points that need to be resolved, s
 
 = Functions =
 
-  * Python package including LICENSE, INSTALL, TODO and CHANGELOG
+  * LICENSE, INSTALL, CHANGELOG files
   * Implement function to correct ID3v2 encoding (might be unneeded, see conceptual question above).
   * Implement function to remove ID3v1 tag, no use if Unicode needed, but we want to keep it by default, as it allows to fix conversion errors later (really need this then?).
   * Improve guessing, use all possible methods together (match to ID3v2, match to file name, ngrams) and weight.
   * Improve guessing, group songs by artist and album, assume same encoding for all (maybe configurable).
   * Inform user by dialog that auto conversion still needs user to cross check, make dialog a "don't tell me again" type one.
-  * Get a progress bar into the status bar and show process on loading and writing of tags.
-  * Make file tag reading, writing and guessing threaded, keep UI responsive.
   * Implement action to remove files from list.
   * Amarok plugin.
   * Improve encoding.py, substitute top-n with better scoring.
+  * Check setup.py for placement of .png and .mo files
 
 = Other =
   * Document source code.
-  * Configuration dialog isn't shown.
+  * Configuration dialog can't handle preferences [http://www.riverbankcomputing.com/pipermail/pyqt/2008-March/018906.html 1]
+  * "What's this" in wrong place in help menu
   * Lack of reponsiveness of combo box; once an item was selected by clicking somewhere else and moving the mouse to an entry where the button is released then entries can't be selected by simply clicking any more.
-  * Menu text doesn't appear by default, when fixing this, it appears in white.
+  * Menu text doesn't appear by default, when fixing this, it appears in white (PyKDE4 issue).
   * Find a way to allow sorting. Currently it mixes up the indices to the file name mapping and thus is unusable.
   * Sort encoding combo box by encoding name (language group)
   * Get proper size of file table view to fit window.
-  * Specialized icon for project, also needed in the "About" dialog.
   * Small handbook.
-  * Tooltips
   * Proper icon for auto-conversion
