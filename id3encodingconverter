@@ -189,6 +189,8 @@ class MainWindow(KXmlGuiWindow, ID3EncodingConverterUI.Ui_MainWindow):
     encodingModel = None
     # currently selecte file in tag view
     currentFile = None
+    # currently selected rows in file view
+    currentlySelectedRows = set()
 
     def __init__(self):
         KXmlGuiWindow.__init__(self)
@@ -376,7 +378,7 @@ class MainWindow(KXmlGuiWindow, ID3EncodingConverterUI.Ui_MainWindow):
             self.fileSelected)
         self.connect(self.fileSelectionModel, SIGNAL(
             "selectionChanged(const QItemSelection &, const QItemSelection &)"),
-            self.updateSelectionDependendActions)
+            self.updateSelection)
         # convert buttons
         self.connect(self.convertAllButton, SIGNAL("clicked(bool)"),
             self.convertAll)
@@ -452,13 +454,15 @@ class MainWindow(KXmlGuiWindow, ID3EncodingConverterUI.Ui_MainWindow):
             if self.currentFile:
                 self.loadTagView(self.currentFile)
             # enable / disable file actions
-            self.recheckFileActions(self.getSelectedIndices())
+            self.recheckFileActions()
 
     def saveFiles(self):
         """Save files currently selected in file table view."""
         fileList = []
-        for index in self.getSelectedIndices():
-            fileList.append(g_fileModelHandler.getFileName(index))
+        for index in self.currentlySelectedRows:
+            fileName = g_fileModelHandler.getFileName(index)
+            if g_fileDataHandler.fileInfo(fileName)['status'] == 'modified':
+                fileList.append(fileName)
         g_fileDataHandler.saveFiles(fileList)
 
     def saveAllPending(self):
@@ -469,7 +473,7 @@ class MainWindow(KXmlGuiWindow, ID3EncodingConverterUI.Ui_MainWindow):
     def reloadFiles(self):
         # get file names
         fileList = []
-        for index in self.getSelectedIndices():
+        for index in self.currentlySelectedRows:
             fileList.append(g_fileModelHandler.getFileName(index))
         # reload tags
         g_fileDataHandler.loadFiles(fileList)
@@ -485,15 +489,17 @@ class MainWindow(KXmlGuiWindow, ID3EncodingConverterUI.Ui_MainWindow):
         else:
             self.setTagViewEnabled(False)
 
-    def updateSelectionDependendActions(self, selectedItems, deselectedItems):
+    def updateSelection(self, selectedItems, deselectedItems):
         # get all selected indices to check on status of write and reload action
-        rows = set()
         for index in selectedItems.indexes():
-            rows.add(index.row())
-        self.recheckFileActions(rows)
+            self.currentlySelectedRows.add(index.row())
+        for index in deselectedItems.indexes():
+            if index.row() in self.currentlySelectedRows:
+                self.currentlySelectedRows.remove(index.row())
+        self.recheckFileActions()
 
-    def recheckFileActions(self, indices):
-        for index in indices:
+    def recheckFileActions(self):
+        for index in self.currentlySelectedRows:
             fileName = g_fileModelHandler.getFileName(index)
             if g_fileDataHandler.fileInfoAvailable(fileName) \
                 and g_fileDataHandler.fileInfo(fileName)['status'] \
@@ -703,13 +709,6 @@ class MainWindow(KXmlGuiWindow, ID3EncodingConverterUI.Ui_MainWindow):
                 for tag in FileDataHandler.SUPPORTED_TAGS:
                     self.setID3v2EditColor(tag, 'default')
 
-    def getSelectedIndices(self):
-        """Returns the indices of the selected rows from the file table view."""
-        indices = set()
-        for index in self.fileSelectionModel.selectedIndexes():
-            indices.add(index.row())
-        return indices
-
     def getCurrentEncoding(self):
         idx = self.v1title.currentIndex()
         return unicode(self.encodingModel.item(idx, 2).text())
@@ -734,7 +733,7 @@ class MainWindow(KXmlGuiWindow, ID3EncodingConverterUI.Ui_MainWindow):
                     g_fileDataHandler.fileLosslessConversion(event.fileName)
                 if self.currentFile == event.fileName:
                     self.loadTagView(self.currentFile)
-            self.recheckFileActions(self.getSelectedIndices())
+            self.recheckFileActions()
         elif isinstance(event, ErrorEvent):
             if event.operation == 'write' and event.continueQuestion:
                 ret = KMessageBox.warningContinueCancel(self,
