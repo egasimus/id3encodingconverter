@@ -17,12 +17,15 @@ This page acts as a "To Do" list and collects points that need to be resolved, s
   * Improve guessing, group songs by artist and album, assume same encoding for all (maybe configurable).
   * Inform user by dialog that auto conversion still needs user to cross check, make dialog a "don't tell me again" type one.
   * Implement action to remove files from list.
+  * Implement status 'read error' for files not read.
+  * Implement asynchronous handling of remote files, set status 'saved' only after uploading.
   * Amarok plugin.
   * Improve encoding.py, substitute top-n with better scoring.
   * Check setup.py for placement of .png and .mo files
 
 = Other =
   * Document source code.
+  * Always have a id3v2 dictionary, even when empty. Make this consistent across functions.
   * Configuration dialog can't handle preferences [http://www.riverbankcomputing.com/pipermail/pyqt/2008-March/018906.html 1]
   * "What's this" in wrong place in help menu
   * Lack of reponsiveness of combo box; once an item was selected by clicking somewhere else and moving the mouse to an entry where the button is released then entries can't be selected by simply clicking any more.
