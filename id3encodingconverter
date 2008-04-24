@@ -76,6 +76,10 @@ from PyKDE4.kio import KFile, KFileDialog, KIO
 from PyKDE4.setprogramlogo import setprogramlogo
 try:
     import tagpy
+    from tagpy import mpeg, flac, mpc # TODO , wavpack, trueaudio
+    from tagpy.ogg import vorbis as oggvorbis
+    from tagpy.ogg import flac as oggflac
+    # TODO from tagpy.ogg import speex as oggspeex
     from tagpy import id3v2
 except:
    os.popen("kdialog --sorry 'python-tagpy (Python bindings taglib) is required.'")
@@ -95,6 +99,7 @@ except:
 
 import ID3EncodingConverterUI
 import ID3EncodingConverterGuessingSetup
+import pytagpy
 
 doDebug = True
 
@@ -111,6 +116,12 @@ class FileEvent(QEvent):
         QEvent.__init__(self, QEvent.User)
         self.operation = operation
         self.fileName = fileName
+
+
+class FileAddEvent(QEvent):
+    def __init__(self, fileUrlList):
+        QEvent.__init__(self, QEvent.User)
+        self.fileUrlList = fileUrlList
 
 
 class GuesserSetupWidget(QWidget,
@@ -191,6 +202,8 @@ class MainWindow(KXmlGuiWindow, ID3EncodingConverterUI.Ui_MainWindow):
     currentFile = None
     # currently selected rows in file view
     currentlySelectedRows = set()
+    # list of temporary file names for currently open files
+    tempFiles = {}
 
     def __init__(self):
         KXmlGuiWindow.__init__(self)
@@ -239,6 +252,10 @@ class MainWindow(KXmlGuiWindow, ID3EncodingConverterUI.Ui_MainWindow):
         helpMenu.action(KHelpMenu.menuAboutApp).setIcon(self._appIcon)
         whatsThis = helpMenu.action(KHelpMenu.menuWhatsThis) # TODO not added by default, currently added to the wrong place
         helpMenu.menu().addAction(whatsThis)
+        # set up cleaning
+        self.connect(g_app, SIGNAL("aboutToQuit()"), self.releaseTempFiles)
+        self.connect(g_app, SIGNAL("aboutToQuit()"),
+            g_fileDataHandler.finishJobs) # TODO don't finish read jobs, only writes
 
     def setupUIElementGroups(self):
         """Creates groups of UI elements with same attributes/commands."""
@@ -398,14 +415,22 @@ class MainWindow(KXmlGuiWindow, ID3EncodingConverterUI.Ui_MainWindow):
     ### Main action slots
 
     def addFiles(self):
-        fileList = KFileDialog.getOpenFileNames(KUrl(), "*.mp3|" \
-            + i18n("MP3 files (*.mp3)"), self, i18n('Add files'))
-        fileStringList = [unicode(fileName) for fileName in fileList]
-        if fileStringList:
-            g_fileDataHandler.addFiles(fileStringList)
+        urlList = KFileDialog.getOpenUrls(KUrl(),
+            "*.mp3 *.flac *.tta|" + i18n("Supported types") \
+            + "\n*.mp3|" + i18n("MP3 files (*.mp3)") \
+            + "\n*.flac|" + i18n("FLAC files (*.flac)") \
+            + "\n*.tta|" + i18n("TrueAudio files (*.tta)"), \
+            self, i18n('Add files'))
+        fileDict = {}
+        for fileUrl in urlList:
+            tmpFile = self.downloadFile(fileUrl)
+            if tmpFile:
+                fileDict[unicode(fileUrl.pathOrUrl())] = tmpFile
+        if fileDict:
+            g_fileDataHandler.addFiles(fileDict)
 
     def addDirectory(self):
-        def walktree(top=".", suffix=''):
+        def walktree(top=".", suffixes=[]):
             """
             Walk the directory tree, starting from top. Credit to Noah Spurrier
             and Doug Fort.
@@ -418,10 +443,14 @@ class MainWindow(KXmlGuiWindow, ID3EncodingConverterUI.Ui_MainWindow):
                 except os.error:
                     continue
                 if stat.S_ISDIR(st.st_mode):
-                    for (newtop, children) in walktree(os.path.join(top, name)):
+                    for (newtop, children) in walktree(os.path.join(top, name),
+                        suffixes):
                         yield newtop, children
-                elif name.lower().endswith(suffix):
-                    files.append(name)
+                else:
+                    for suffix in suffixes:
+                        if name.lower().endswith(suffix):
+                            files.append(name)
+                            break
             yield top, files
 
         import os, stat, types, glob
@@ -430,7 +459,8 @@ class MainWindow(KXmlGuiWindow, ID3EncodingConverterUI.Ui_MainWindow):
         if unicode(dirName):
             try:
                 fileList = []
-                for dirName, files in walktree(unicode(dirName), '.mp3'):
+                for dirName, files in walktree(unicode(dirName),
+                    ['.mp3', '.flac', '.tta']):
                     for fileName in files:
                         fileList.append(os.path.join(dirName, fileName))
                 g_fileDataHandler.addFiles(fileList)
@@ -717,6 +747,52 @@ class MainWindow(KXmlGuiWindow, ID3EncodingConverterUI.Ui_MainWindow):
         idx = self.v1title.currentIndex()
         return unicode(self.encodingModel.item(idx, 2).text())
 
+    ### Remote file I/O
+
+    def downloadFile(self, fileName):
+        """
+        Makes a file with the given url readable locally by downloading it into
+        a temp file.
+        On closing of file releaseTempFile() needs to be calles on the file.
+        """
+        tmpFile = QString()
+        if isinstance(fileName, KUrl):
+            fileUrl = fileName
+            fileName = unicode(fileName.pathOrUrl())
+        else:
+            fileUrl = KUrl(fileName)
+        if KIO.NetAccess.download(fileUrl, tmpFile, self):
+            self.tempFiles[fileName] = unicode(tmpFile)
+            return self.tempFiles[fileName]
+        else:
+            KMessageBox.error(self, KIO.NetAccess.lastErrorString())
+
+    def uploadFile(self, fileName):
+        if isinstance(fileName, KUrl):
+            fileUrl = fileName
+            fileName = unicode(fileName.pathOrUrl())
+        else:
+            fileUrl = KUrl(fileName)
+        print fileName
+        print self.tempFiles
+        tmpFile = self.tempFiles[fileName]
+        if not KIO.NetAccess.upload(tmpFile, fileUrl, self):
+            KMessageBox.error(self, KIO.NetAccess.lastErrorString())
+
+    def releaseTempFile(self, fileName):
+        """
+        Releases the local copy (temp file) created by downloadFile() for the
+        given file.
+        """
+        tmpFile = self.tempFiles[fileName]
+        KIO.NetAccess.removeTempFile(tmpFile)
+        del self.tempFiles[fileName]
+
+    def releaseTempFiles(self):
+        fileList = self.tempFiles.keys()
+        for fileName in fileList:
+            self.releaseTempFile(fileName)
+
     ### callback methods
 
     def customEvent(self, event):
@@ -737,7 +813,16 @@ class MainWindow(KXmlGuiWindow, ID3EncodingConverterUI.Ui_MainWindow):
                     g_fileDataHandler.fileLosslessConversion(event.fileName)
                 if self.currentFile == event.fileName:
                     self.loadTagView(self.currentFile)
+            elif event.operation == 'write':
+                self.uploadFile(event.fileName)
             self.recheckFileActions()
+        elif isinstance(event, FileAddEvent):
+            fileDict = {}
+            for fileUrl in event.fileUrlList:
+                tmpFile = self.downloadFile(fileUrl)
+                if tmpFile:
+                    fileDict[unicode(fileUrl.pathOrUrl())] = tmpFile
+            g_fileDataHandler.addFiles(fileDict)
         elif isinstance(event, ErrorEvent):
             if event.operation == 'write' and event.continueQuestion:
                 ret = KMessageBox.warningContinueCancel(self,
@@ -815,7 +900,48 @@ class FileModelHandler:
         return unicode(self.fileModel.item(row, 1).text())
 
 
+class TMPFileTypeResolver(pytagpy.PyFileRef.PyFileTypeResolver):
+    """
+    FileTypeResolver used by tagpy to create the proper File instance, depending
+    on the type of the input.
+
+    This is just a copy of the current default behaviour of TagLib which tests
+    the file name extension to estimate the file type. As
+    KIO::NetAccess.download() creates temp files with the ending .tmp TagLib
+    fails to estimate the proper type. This class solves this by inserting the
+    original file name for which the temp file was created.
+    """
+    def __init__(self, realNameLookup):
+        pytagpy.PyFileRef.PyFileTypeResolver.__init__(self)
+        self.realNameLookup = realNameLookup
+
+    def createFile(self, fileName, readAudioProperties=True):
+        s = self.realNameLookup.realName(fileName)
+        print fileName, s
+        if s.upper().endswith(".OGG"):
+            return oggvorbis.File(fileName, readAudioProperties)
+        if s.upper().endswith(".MP3"):
+            return mpeg.File(fileName, readAudioProperties)
+        if s.upper().endswith(".OGA"):
+            return oggflac.File(fileName, readAudioProperties)
+        if s.upper().endswith(".FLAC"):
+            return flac.File(fileName, readAudioProperties)
+        if s.upper().endswith(".MPC"):
+            return mpc.File(fileName, readAudioProperties)
+        #if s.upper().endswith(".WV"):
+            #return wavpack.File(fileName, readAudioProperties)
+        #if s.upper().endswith(".SPX"):
+            #return oggspeex.File(fileName, readAudioProperties)
+        #if s.upper().endswith(".TTA"):
+            #return trueaudio.File(fileName, readAudioProperties)
+
+
 class ReadWriteThread(threading.Thread):
+    # realFilePath, contains the path to local copy of the given files
+    _realFilePath = {}
+    # realName, contains the reverse direction wrt realFilePath
+    _realName = {}
+
     def __init__(self, fileHandler, **kwargs):
         threading.Thread.__init__(self, **kwargs)
         # file handler instance for getting changed id3 tags
@@ -836,6 +962,9 @@ class ReadWriteThread(threading.Thread):
         self.waiters = {}
         self.setDaemon(True)
         self.lastJobNoQueueEmpty = -1
+        # get a file type resolver to work with temp files generated by
+        #   KIO::NetAccess and work around missing file extensions
+        pytagpy.PyFileRef.addFileTypeResolver(TMPFileTypeResolver(self))
 
     def run(self):
         while True:
@@ -847,13 +976,13 @@ class ReadWriteThread(threading.Thread):
                 debug("pausing")
                 with self.pauseCond:
                     self.pauseCond.wait()
+            # get job parameters
             self.currentJobNo, fileName, mode, info = job
-            debug("got job '" + mode + "' for file '" + fileName + "'")
+            filePath = self.realFilePath(fileName)
+            debug("got job '" + mode + "' for file '" + fileName \
+                + "' (real path '" + filePath + "')")
             # open file
-            f = None
-            tempFile = getLocalFile(fileName)
-            if tempFile:
-                f = tagpy.FileRef(unicode(fileName).encode(system_encoding))
+            f = pytagpy.PyFileRef(filePath.encode(system_encoding))
             # check if loaded correctly
             if not f or f.isNull():
                 if mode == 'w':
@@ -886,9 +1015,6 @@ class ReadWriteThread(threading.Thread):
                     with self.waiters[fileName]:
                         self.waiters[fileName].notify()
                         del self.waiters[fileName]
-            # release local copy
-            if tempFile:
-                releaseLocalFile(fileName)
             self.jobList.task_done()
 
     def finishJobs(self):
@@ -908,12 +1034,15 @@ class ReadWriteThread(threading.Thread):
     def _read(self, fileRef, fileName, info):
         id3v1 = self._getID3v1TagInfo(fileRef)
         id3v2 = self._getID3v2TagInfo(fileRef)
-        info = {}
-        # ID3v1 tag dictionary
-        info['id3v1'] = id3v1
-        # ID3v2 tag dictionary
-        info['id3v2'] = id3v2
-        self.fileHandler.fileEvent('readSuccess', fileName, info)
+        if id3v1 == None or id3v2 == None:
+            self.fileHandler.fileEvent('tagFailure', fileName, info)
+        else:
+            info = {}
+            # ID3v1 tag dictionary
+            info['id3v1'] = id3v1
+            # ID3v2 tag dictionary
+            info['id3v2'] = id3v2
+            self.fileHandler.fileEvent('readSuccess', fileName, info)
 
     def pause(self, status):
         self._pause = status
@@ -921,6 +1050,22 @@ class ReadWriteThread(threading.Thread):
             self.pauseCond.notify()
 
     ### Public I/O access methods
+
+    def setRealFilePath(self, fileName, filePath):
+        self._realFilePath[fileName] = filePath
+        self._realName[filePath] = fileName
+
+    def realFilePath(self, fileName):
+        if fileName in self._realFilePath:
+            return self._realFilePath[fileName]
+        else:
+            return fileName
+
+    def realName(self, filePath):
+        if filePath in self._realName:
+            return self._realName[filePath]
+        else:
+            return filePath
 
     def store(self, fileList):
         for fileName in fileList:
@@ -996,7 +1141,10 @@ class ReadWriteThread(threading.Thread):
     def _getID3v1TagInfo(self, fileRef):
         """Returns the ID3v1 tag dictionary."""
         ID3v1TagInfo = {}
-        tagRefID3v1 = fileRef.file().ID3v1Tag(False)
+        try:
+            tagRefID3v1 = fileRef.file().ID3v1Tag(False)
+        except AttributeError:
+            return None
         if tagRefID3v1:
             ID3v1TagInfo['Artist'] = tagRefID3v1.artist.encode("latin1").strip()
             ID3v1TagInfo['Title'] = tagRefID3v1.title.encode("latin1").strip()
@@ -1009,7 +1157,10 @@ class ReadWriteThread(threading.Thread):
     def _getID3v2TagInfo(self, fileRef):
         """Returns the ID3v2 tag dictionary."""
         ID3v2TagInfo = {}
-        tagRefID3v2 = fileRef.file().ID3v2Tag(False)
+        try:
+            tagRefID3v2 = fileRef.file().ID3v2Tag(False)
+        except AttributeError:
+            return None
         if tagRefID3v2:
             ID3v2TagInfo['Artist'] = tagRefID3v2.artist.strip()
             ID3v2TagInfo['Title'] = tagRefID3v2.title.strip()
@@ -1045,9 +1196,11 @@ class FileDataHandler:
 
     ### File manangement operations
 
-    def addFiles(self, fileList):
+    def addFiles(self, fileDict):
         readList = []
-        for fileName in fileList:
+        for fileName in fileDict:
+            if type(fileDict) == type({}):
+                self.rwThread.setRealFilePath(fileName, fileDict[fileName])
             if fileName not in self.fileData:
                 debug(u'adding ' + fileName)
                 # insert into model
@@ -1107,7 +1260,14 @@ class FileDataHandler:
             msg = unicode(ki18n("The file '%1' couldn't be read.")\
                     .subs(fileName).toString())
             QCoreApplication.postEvent(g_mainWindow, ErrorEvent('read', msg))
-            self.removeFiles([fileName])
+            self.removeFiles([fileName]) # TODO instead of removing, mark as errorneous
+        elif msg == 'tagFailure':
+            self.rwThread.pause(True)
+            msg = unicode(ki18n(
+                "The format of file '%1' doesn't allow ID3v1 or ID3v2 tags.")\
+                    .subs(fileName).toString())
+            QCoreApplication.postEvent(g_mainWindow, ErrorEvent('read', msg))
+            self.removeFiles([fileName]) # TODO instead of removing, mark as errorneous
         elif msg == 'writeSuccess':
             if not self.rwThread.isQueuedForWriting(fileName):
                 # if no other instances is being written, update status
@@ -1351,44 +1511,11 @@ class FileDataHandler:
         return encodings
 
 
-class ID3EncodingConverter(KApplication):
-    def quit(self):
-        # finish jobs
-        # TODO don't finish read jobs, only writes
-        g_fileDataHandler.finishJobs()
-        KApplication.quit(self)
-
 _, system_encoding = locale.getdefaultlocale()
 
 def debug(message):
     if doDebug:
         print >>sys.stderr, message.encode(system_encoding)
-
-# tempFiles contains all currently local copies of open files
-global tempFiles
-tempFiles = {}
-
-def getLocalFile(fileName):
-    """
-    Makes a file with the given url readable locally by downloading it into
-    a temp file.
-    On closing of file releaseLocalFile() needs to be calles on the file.
-    """
-    tmpFile = QString()
-    if KIO.NetAccess.download(KUrl(fileName), tmpFile, g_mainWindow):
-        tempFiles[fileName] = unicode(tmpFile)
-        return tempFiles[fileName]
-    else:
-        KMessageBox.error(g_mainWindow, KIO.NetAccess.lastErrorString())
-
-def releaseLocalFile(fileName):
-    """
-    Releases the local copy (temp file) created by getLocalFile() for the
-    given file.
-    """
-    tmpFile = tempFiles[fileName]
-    KIO.NetAccess.removeTempFile(tmpFile)
-    del tempFiles[fileName]
 
 def main():
     appName     = "id3encodingconverter"
@@ -1417,7 +1544,7 @@ def main():
 
     # create applicaton
     global g_app
-    g_app = ID3EncodingConverter()
+    g_app = KApplication()
 
     logo = QtGui.QImage('id3encodingconverter_about.png')
     setprogramlogo(aboutData, logo)
@@ -1438,10 +1565,11 @@ def main():
     g_mainWindow.show()
 
     # get file names from the command line
-    fileList = []
+    fileUrlList = []
     for i in range(0, args.count()):
-        fileList.append(unicode(args.url(i).pathOrUrl()))
-    g_fileDataHandler.addFiles(fileList)
+        fileUrl = args.url(i)
+        fileUrlList.append(args.url(i))
+    QCoreApplication.postEvent(g_mainWindow, FileAddEvent(fileUrlList))
 
     g_app.exec_()
 
