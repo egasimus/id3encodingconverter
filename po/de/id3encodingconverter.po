@@ -1,0 +1,161 @@
+# translation of messages.po to
+# Copyright (C) YEAR THE PACKAGE'S COPYRIGHT HOLDER
+# This file is distributed under the same license as the PACKAGE package.
+#
+# Christoph Burgmer <christoph.burgmer@stud.uni-karlsruhe.de>, 2008.
+msgid ""
+msgstr ""
+"Project-Id-Version: messages\n"
+"Report-Msgid-Bugs-To: \n"
+"POT-Creation-Date: 2008-04-17 20:25+0200\n"
+"PO-Revision-Date: 2008-04-17 20:41+0200\n"
+"Last-Translator: Christoph Burgmer <chrislb@gmx.de>\n"
+"Language-Team:  <de@li.org>\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"X-Generator: KBabel 1.11.4\n"
+
+#: id3encodingconverter:125
+msgid "Choose path of textcat language model files."
+msgstr "Wähle den Pfad der Textcat-Sprachmodelle."
+
+#: id3encodingconverter:129
+msgid "Add preferred encodings to increase the accuracy of encoding guessing."
+msgstr "Füge verwendete Zeichenkodierungen hinzu, um die automatische Erkennung zu verbessern."
+
+#: id3encodingconverter:154
+msgid "Encoding Guessing"
+msgstr "Automatische Erkennung der Zeichenkodierung"
+
+#: id3encodingconverter:305 id3encodingconverter:733
+msgid "Title"
+msgstr "Titel"
+
+#: id3encodingconverter:307
+msgid "Encoding name"
+msgstr "Name der Zeichenkodierung"
+
+#: id3encodingconverter:309
+msgid "Encoding"
+msgstr "Zeichenkodierung"
+
+#: id3encodingconverter:320
+msgid "&Add files..."
+msgstr "&Dateien hinzufügen..."
+
+#: id3encodingconverter:324
+msgid "Adds files to the table"
+msgstr "Füge Dateien zur Tabelle hinzu."
+
+#: id3encodingconverter:328
+msgid "Add &directory..."
+msgstr "&Verzeichnis hinzufügen..."
+
+#: id3encodingconverter:331
+msgid "Adds the content of a directory to the table"
+msgstr "Fügt den Inhalt eines Verzeichnisses zur Tabelle hinzu."
+
+#: id3encodingconverter:336
+msgid "&Save"
+msgstr "S&peichern"
+
+#: id3encodingconverter:340
+msgid "Saves selected files"
+msgstr "Speichert markierte Dateien"
+
+#: id3encodingconverter:344
+msgid "Save &all"
+msgstr "&Alles speichern"
+
+#: id3encodingconverter:346
+msgid "Saves all modified files"
+msgstr "Speichert alle geänderten Dateien"
+
+#: id3encodingconverter:352
+msgid "&Revert"
+msgstr "&Verwerfen"
+
+#: id3encodingconverter:353
+msgid "Reloads selected files"
+msgstr "Lädt markierte Dateien erneut"
+
+#: id3encodingconverter:361
+msgid "Auto-&conversion"
+msgstr "Automatische &Konvertierung"
+
+#: id3encodingconverter:363
+msgid "Autoconverts ID3v1 tags to ID3v2 with the current encoding."
+msgstr "Konvertiert automatisch Audiotags von ID3v1 zu ID3v2."
+
+#: id3encodingconverter:399
+msgid "MP3 files (*.mp3)"
+msgstr "MP3-Dateien (*.mp3)"
+
+#: id3encodingconverter:399
+msgid "Add files"
+msgstr "Dateien hinzufügen"
+
+#: id3encodingconverter:703
+msgid "The file '%1' couldn't be saved."
+msgstr "Die Datei %1 konnte nicht geschrieben werden."
+
+#: id3encodingconverter:709
+msgid "Continue with other files?"
+msgstr "Mit weiteren Dateien fortfahren?"
+
+#: id3encodingconverter:729
+msgid "Status"
+msgstr "Status"
+
+#: id3encodingconverter:731
+msgid "File"
+msgstr "Datei"
+
+#: id3encodingconverter:735
+msgid "Artist"
+msgstr "Interpret"
+
+#: id3encodingconverter:759
+msgid "file modified"
+msgstr "Datei geändert"
+
+#: id3encodingconverter:762
+msgid "file saved"
+msgstr "Datei gespeichert"
+
+#: id3encodingconverter:1191
+msgid "ID3EncodingConverter"
+msgstr "ID3EncodingConverter"
+
+#: id3encodingconverter:1193
+msgid ""
+"A simple ID3 tag viewer with support for conversion of different character "
+"sets."
+msgstr "Einfacher Editor für ID3-Tags mit Unterstützung zur Konvertierung verschiedener Zeichenkodierungen."
+
+#: id3encodingconverter:1195
+msgid "(c) 2008 Christoph Burgmer"
+msgstr "(c) 2008 Christoph Burgmer"
+
+#: id3encodingconverter:1196
+msgid ""
+"ID3EncodingConverter is a simple ID3 tag viewer for KDE written in Python "
+"which supports conversion of tags from different character sets to Unicode "
+"with ID3v2. Its goal is fast and simple conversion for multiple files, "
+"letting the user compare between ID3v1 and ID3v2 tags and choose the correct "
+"encoding."
+msgstr "ID3EncodingConverter ist ein einfacher in Python geschriebener Editor für ID3-Tags für KDE und unterstützt die Konvertierung von Tags in verschiedenen Zeichenkodierungen zu Unicode in ID3v2. Sein Ziel ist die schnelle und einfache Konvertierung für mehrere Dateien, indem der Benutzer zwischen den ID3v1- und ID3v2-Tags vergleicht und die korrekte Kodierung auswählt."
+
+#: id3encodingconverter:1202
+msgid "Christoph Burgmer"
+msgstr "Christoph Burgmer"
+
+#: id3encodingconverter:1202
+msgid "Developer"
+msgstr "Entwickler"
+
+#: id3encodingconverter:1208
+msgid "Files to open"
+msgstr "Zu öffnende Dateien"
+

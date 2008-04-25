@@ -71,7 +71,7 @@ from PyKDE4.kdecore import KAboutData, KConfig, KUrl, KGlobal
 from PyKDE4.kdeui import KApplication, KXmlGuiWindow, KAction, KToggleAction
 from PyKDE4.kdeui import KStandardAction, KStandardShortcut, KIcon, KMessageBox
 from PyKDE4.kdeui import KConfigDialog, KPageDialog, KConfigSkeleton, KHelpMenu
-from PyKDE4.kdeui import KEditListBox, KComboBox, KLineEdit
+from PyKDE4.kdeui import KEditListBox, KComboBox, KLineEdit, KDialog
 from PyKDE4.kio import KFile, KFileDialog, KIO
 from PyKDE4.setprogramlogo import setprogramlogo
 try:
@@ -106,7 +106,8 @@ except:
    raise Exception('old version of tagpy')
 
 import ID3EncodingConverterUI
-import ID3EncodingConverterGuessingSetup
+import ID3GuessingSetupUI
+import ID3v2EncodingUI
 
 doDebug = True
 
@@ -131,8 +132,7 @@ class FileAddEvent(QEvent):
         self.fileUrlList = fileUrlList
 
 
-class GuesserSetupWidget(QWidget,
-    ID3EncodingConverterGuessingSetup.Ui_EncodingGuessing):
+class GuesserSetupWidget(QWidget, ID3GuessingSetupUI.Ui_Widget):
 
     def __init__(self, parent):
         QWidget.__init__(self, parent)
@@ -163,6 +163,82 @@ class GuesserSetupWidget(QWidget,
         self.kcfg_language_encoding_pref = KEditListBox('Preferred Encodings',
             custom, self)
         self.vboxlayout.addWidget(self.kcfg_language_encoding_pref)
+
+
+class ID3v2RecodeWidget(QWidget, ID3v2EncodingUI.Ui_Widget):
+
+    def __init__(self, parent, fileName):
+        QWidget.__init__(self, parent)
+        self.fileName = fileName
+        self.id3v2 = g_fileDataHandler.fileInfo(fileName)['id3v2'].copy()
+        # set up UI
+        self.setupUi(self)
+        self.id3v2Edits = {'Artist': self.v2artist, 'Album': self.v2album,
+            'Genre': self.v2genre, 'Comment': self.v2comment}
+        self.setupEncodingCombo()
+        # combo box
+        self.connect(self.v2title, SIGNAL("activated(int)"),
+            self.encodingSelected)
+        comboIndex = self.encodingIndex['latin1']
+        self.v2title.setCurrentIndex(comboIndex)
+        self.encodingSelected(comboIndex)
+
+    def setupEncodingCombo(self):
+        # set up encoding model for combo box
+        self.setupEncodingModel()
+        #self.encodingModel.sort(0) # TODO doesn't work as expected
+        self.v2title.setModel(self.encodingModel)
+        # create a table as view inside the combo box
+        comboTable = QtGui.QTreeView(self.v2title)
+        comboTable.setModel(self.encodingModel)
+        # set header
+        header = QtGui.QHeaderView(Qt.Horizontal, comboTable)
+        header.setVisible(False)
+        header.setResizeMode(QtGui.QHeaderView.Stretch)
+        comboTable.setHeader(header)
+        comboTable.setRootIsDecorated(False)
+        comboTable.setColumnHidden(2, True)
+        comboTable.setSelectionBehavior(QtGui.QAbstractItemView.SelectRows)
+        self.v2title.setView(comboTable)
+
+    def setupEncodingModel(self):
+        self.encodingDict = g_fileDataHandler.getEncodings()
+        self.encodingIndex = dict([(encoding, idx) for idx, encoding \
+            in enumerate(self.encodingDict.keys())])
+        rowCount = len(self.encodingIndex)
+        self.encodingModel = QtGui.QStandardItemModel(rowCount, 3);
+        self.encodingModel.setHeaderData(0, Qt.Horizontal,
+            QVariant(i18n('Title')))
+        self.encodingModel.setHeaderData(1, Qt.Horizontal,
+            QVariant(i18n('Encoding name')))
+        self.encodingModel.setHeaderData(2, Qt.Horizontal,
+            QVariant(i18n('Encoding')))
+        for encoding in self.encodingIndex:
+            row = self.encodingIndex[encoding]
+            name = self.encodingDict[encoding]
+            title = self.id3v2['Title'].encode('latin1', 'replace')\
+                .decode(encoding, 'replace')
+            self.encodingModel.setItem(row, 0, QtGui.QStandardItem(title))
+            self.encodingModel.setItem(row, 1, QtGui.QStandardItem(name))
+            self.encodingModel.setItem(row, 2, QtGui.QStandardItem(encoding))
+
+    def encodingSelected(self, idx):
+        self.encoding = unicode(self.encodingModel.item(idx, 2).text())
+        # update tag view for ID3v1
+        for tag in self.id3v2Edits:
+            element = self.id3v2Edits[tag]
+            element.setText(self.id3v2[tag].encode('latin1', 'replace')\
+                .decode(self.encoding, 'replace'))
+        self.emit(SIGNAL("changed(bool)"), True)
+
+    def save(self):
+        for tag in self.id3v2:
+            g_fileDataHandler.setFileID3v2Tag(self.fileName, tag,
+                self.id3v2[tag].encode('latin1', 'replace').decode(
+                    self.encoding, 'replace'), self.encoding)
+        g_mainWindow.setID3v2DataView(
+            g_fileDataHandler.fileInfo(self.fileName)['id3v2'])
+        g_mainWindow.updateColoring()
 
 
 class PreferencesDialog(KConfigDialog):
@@ -410,9 +486,11 @@ class MainWindow(KXmlGuiWindow, ID3EncodingConverterUI.Ui_MainWindow):
             element = self.conversionButtons[tag]
             self.connect(element, SIGNAL("clicked(bool)"),
                 partial(self.convertTag, tag))
-        # button to remove ID3v1
+        # buttons to remove ID3v1 and recode ID3v2
         self.connect(self.v1removeButton, SIGNAL("clicked(bool)"),
             self.removeID3v1)
+        self.connect(self.v2recode, SIGNAL("clicked(bool)"),
+            self.recodeID3v2)
         # ID3v2 line edits
         for tag in self.id3v2Edits.keys():
             element = self.id3v2Edits[tag]
@@ -613,6 +691,22 @@ class MainWindow(KXmlGuiWindow, ID3EncodingConverterUI.Ui_MainWindow):
                 KMessageBox.error(self,
                     i18n('Feature only available for mpeg files.'))
 
+    def recodeID3v2(self):
+        if self.currentFile:
+            dialog = KDialog(self)
+            dialog.setCaption(i18n("Recode ID3v2 tags"))
+            dialog.setButtons(KDialog.ButtonCode(KDialog.Ok | KDialog.Cancel \
+                | KDialog.Apply))
+            widget = ID3v2RecodeWidget(self, self.currentFile)
+            dialog.setMainWidget(widget)
+            self.connect(dialog, SIGNAL("applyClicked()"), widget.save)
+            self.connect(dialog, SIGNAL("okClicked()"), widget.save)
+            self.connect(widget, SIGNAL("changed(bool)"),
+                dialog.enableButtonApply)
+
+            dialog.enableButtonApply(False)
+            dialog.show()
+
     def storeTagContent(self, tag):
         if self.currentFile:
             text = self.id3v2Edits[tag].text()
@@ -659,8 +753,6 @@ class MainWindow(KXmlGuiWindow, ID3EncodingConverterUI.Ui_MainWindow):
                         'replace')
                     self.encodingModel.setItem(row, 0,
                         QtGui.QStandardItem(title))
-                    self.encodingModel.setItem(row, 1,
-                        QtGui.QStandardItem(name))
             # update tag view; set id3v2 data first, then v1 to update colours
             self.setID3v2DataView(fileInfo['id3v2'])
             self.setID3v1DataView(fileInfo['encoding'], fileInfo['id3v1'])
@@ -674,12 +766,10 @@ class MainWindow(KXmlGuiWindow, ID3EncodingConverterUI.Ui_MainWindow):
         for element in self.labels:
             element.setEnabled(True)
         if id3v1:
-            self.v1artist.setText(id3v1['Artist'].decode(encoding, 'replace'))
-            self.v1album.setText(id3v1['Album'].decode(encoding, 'replace'))
-            self.v1genre.setText(id3v1['Genre'].decode(encoding, 'replace'))
-            self.v1comment.setText(id3v1['Comment'].decode(encoding, 'replace'))
-            for element in self.id3v1Edits.values():
-                element.setEnabled(True)
+            for tag in self.id3v1Edits:
+                self.id3v1Edits[tag].setText(id3v1[tag].decode(encoding,
+                    'replace'))
+                self.id3v1Edits[tag].setEnabled(True)
             self.convertAllButton.setEnabled(True)
             for element in self.conversionButtons.values():
                 element.setEnabled(True)
