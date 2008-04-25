@@ -3,6 +3,9 @@ Python implementation of TagLibs FileRef class (fileref.cpp):
 http://websvn.kde.org/trunk/kdesupport/taglib/taglib/fileref.cpp?revision=773935&view=markup.
 
 Comparision on instances is not implemented (yet).
+
+This classes now are in TagPy, this just stayes here for compatibility with old
+versions.
 """
 
 from tagpy import mpeg, flac, mpc # TODO , wavpack, trueaudio
@@ -14,19 +17,21 @@ import tagpy
 global _fileTypeResolvers
 _fileTypeResolvers = []
 
+class PyFileTypeResolver:
+    def __init__(self):
+        pass
+
+    def createFile(self, fileName, readAudioProperties=True,
+        audioPropertiesStyle=tagpy.ReadStyle.Average):
+        raise NotImplementedError
+
 class PyFileRef():
-
-    class PyFileTypeResolver:
-        def __init__(self):
-            pass
-
-        def createFile(self, fileName, readAudioProperties=True): #,         audioPropertiesStyle=tagpy.AudioProperties.Average):
-            raise NotImplementedError
 
     def __init__(self):
         self._file = None
 
-    def __init__(self, f, readAudioProperties=True): #,         audioPropertiesStyle=tagpy.AudioProperties.Average):
+    def __init__(self, f, readAudioProperties=True,
+            audioPropertiesStyle=tagpy.ReadStyle.Average):
         if isinstance(f, PyFileRef):
             self._file = f._file
         elif isinstance(f, tagpy.File):
@@ -35,10 +40,10 @@ class PyFileRef():
             self._file = PyFileRef.create(f, readAudioProperties)
 
     def audioProperties(self):
-        return self._file.tag()
+        return self._file.audioProperties()
 
     def tag(self):
-        return self._file.audioProperties()
+        return self._file.tag()
 
     def file(self):
         return self._file
@@ -51,7 +56,11 @@ class PyFileRef():
         return ["ogg", "flac", "oga", "mp3", "mpc", "wv", "spx", "tta"]
 
     def isNull(self):
-        return not self._file or not self._file.isValid()
+        try:
+            return not self._file or not self._file.isValid()
+        except AttributeError:
+            # work around missing method isValid in tagpy < 0.94.X
+            return not self._file
 
     @staticmethod
     def addFileTypeResolver(resolver):
@@ -59,26 +68,34 @@ class PyFileRef():
         return resolver
 
     @staticmethod
-    def create(fileName, readAudioProperties=True): #,         audioPropertiesStyle=tagpy.AudioProperties.Average):
+    def create(fileName, readAudioProperties=True,
+            audioPropertiesStyle=tagpy.ReadStyle.Average):
         for resolver in _fileTypeResolvers:
-            file = resolver.createFile(fileName, readAudioProperties)# TODO,
-                #audioPropertiesStyle)
+            file = resolver.createFile(fileName, readAudioProperties,
+                audioPropertiesStyle)
             if file:
                 return file
         if fileName.upper().endswith(".OGG"):
-            return oggvorbis.File(fileName, readAudioProperties)
+            return oggvorbis.File(fileName, readAudioProperties,
+                audioPropertiesStyle)
         if fileName.upper().endswith(".MP3"):
-            return mpeg.File(fileName, readAudioProperties)
+            return mpeg.File(fileName, readAudioProperties,
+                audioPropertiesStyle)
         if fileName.upper().endswith(".OGA"):
-            return oggflac.File(fileName, readAudioProperties)
+            return oggflac.File(fileName, readAudioProperties,
+                audioPropertiesStyle)
         if fileName.upper().endswith(".FLAC"):
-            return flac.File(fileName, readAudioProperties)
+            return flac.File(fileName, readAudioProperties,
+                audioPropertiesStyle)
         if fileName.upper().endswith(".MPC"):
-            return mpc.File(fileName, readAudioProperties)
+            return mpc.File(fileName, readAudioProperties,
+                audioPropertiesStyle)
         #if fileName.upper().endswith(".WV"):
-            #return wavpack.File(fileName, readAudioProperties)
+            #return wavpack.File(fileName, readAudioProperties,
+                #audioPropertiesStyle)
         #if fileName.upper().endswith(".SPX"):
-            #return oggspeex.File(fileName, readAudioProperties)
+            #return oggspeex.File(fileName, readAudioProperties,
+                #audioPropertiesStyle)
         #if fileName.upper().endswith(".TTA"):
-            #return trueaudio.File(fileName, readAudioProperties) # TODO,
+            #return trueaudio.File(fileName, readAudioProperties,
                 #audioPropertiesStyle)
