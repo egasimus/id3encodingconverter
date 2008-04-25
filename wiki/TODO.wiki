@@ -11,8 +11,6 @@ This page acts as a "To Do" list and collects points that need to be resolved, s
 = Functions =
 
   * LICENSE, INSTALL, CHANGELOG files
-  * Implement function to correct ID3v2 encoding (might be unneeded, see conceptual question above).
-  * Implement function to remove ID3v1 tag, no use if Unicode needed, but we want to keep it by default, as it allows to fix conversion errors later (really need this then?).
   * Improve guessing, use all possible methods together (match to ID3v2, match to file name, ngrams) and weight.
   * Improve guessing, group songs by artist and album, assume same encoding for all (maybe configurable).
   * Inform user by dialog that auto conversion still needs user to cross check, make dialog a "don't tell me again" type one.
@@ -22,6 +20,7 @@ This page acts as a "To Do" list and collects points that need to be resolved, s
   * Amarok plugin.
   * Improve encoding.py, substitute top-n with better scoring.
   * Check setup.py for placement of .png and .mo files
+  * Use the StringHandler class of TagLib
 
 = Other =
   * Document source code.
@@ -33,5 +32,6 @@ This page acts as a "To Do" list and collects points that need to be resolved, s
   * Find a way to allow sorting. Currently it mixes up the indices to the file name mapping and thus is unusable.
   * Sort encoding combo box by encoding name (language group)
   * Get proper size of file table view to fit window.
+  * Get proper size for ID3v2 encoding dialog.
   * Small handbook.
   * Proper icon for auto-conversion
