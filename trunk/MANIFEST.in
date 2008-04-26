@@ -2,6 +2,7 @@ include id3encodingconverterui.rc
 include ID3EncodingConverterGuessingSetup.ui
 include ID3EncodingConverter.ui
 include TODO
+include DEVELOPMENT
 include id3encodingconverter.desktop
 include data/*
 include po/*

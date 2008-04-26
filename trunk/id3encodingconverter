@@ -135,33 +135,16 @@ class GuesserSetupWidget(QWidget, ID3GuessingSetupUI.Ui_Widget):
 
     def __init__(self, parent):
         QWidget.__init__(self, parent)
-        encodings = g_fileDataHandler.getEncodings().values()
         self.setupUi(self)
         # set the url input to only accept directories for the path
         self.kcfg_textcat_LM_path.setMode(KFile.Directory)
         self.kcfg_textcat_LM_path.setWhatsThis(i18n("Choose path of textcat language model files."))
-        # create a custom editor, get a combobox for the encoding preferences
-        encodingCombo = KComboBox(True, self)
-        encodingCombo.addItems(encodings)
-        encodingCombo.setWhatsThis(i18n("Add preferred encodings to increase the accuracy of encoding guessing."))
-        # as only writable comboboxes are allowed, we'll fake a editable first,
-        #   reset to another line edit and disable editing afterwards
-        lineEdit = KLineEdit(self)
-        lineEdit.setVisible(False)
-        self.connect(encodingCombo, SIGNAL("activated(const QString &)"),
-            lineEdit.setText),
-        lineEdit.setText(encodingCombo.currentText()) # select first element
-        custom = KEditListBox.CustomEditor(encodingCombo)
-        custom.setLineEdit(lineEdit)
-        encodingCombo.setEditable(False)
-        #   setting a custom editor later is only available from KDE 4.1 on, so
-        #   we need to delete the current input first and create a new one.
-        #   The following line (from 4.1) would save us 
-        #self.kcfg_language_encoding_pref.setCustomEditor(self.encodingCombo)
-        self.vboxlayout.removeWidget(self.kcfg_language_encoding_pref)
-        self.kcfg_language_encoding_pref = KEditListBox('Preferred Encodings',
-            custom, self)
-        self.vboxlayout.addWidget(self.kcfg_language_encoding_pref)
+        # set encodings to choose
+        encodings = g_fileDataHandler.getEncodings().values()
+        self.kcfg_language_encoding_pref.setTitle(i18n('Preferred Encodings'))
+        self.kcfg_language_encoding_pref.addItems(encodings)
+        self.kcfg_language_encoding_pref.comboBox().setWhatsThis(
+            i18n("Add preferred encodings to increase the accuracy of encoding guessing."))
 
 
 class ID3v2RecodeWidget(QWidget, ID3v2EncodingUI.Ui_Widget):
@@ -463,7 +446,7 @@ class MainWindow(KXmlGuiWindow, ID3EncodingConverterUI.Ui_MainWindow):
         self.connect(self.reloadFilesAction, SIGNAL("triggered(bool)"),
             self.reloadFiles)
         # close files
-        self.closeFilesAction = KAction(KIcon("dialog-close"),
+        self.closeFilesAction = KAction(KIcon("edit-delete"),
             i18n("&Close"), self)
         self.closeFilesAction.setWhatsThis(i18n("Closes selected files"))
         self.actionCollection().addAction("closefiles", self.closeFilesAction)
