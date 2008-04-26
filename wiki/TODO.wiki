@@ -13,19 +13,17 @@ This page acts as a "To Do" list and collects points that need to be resolved, s
   * LICENSE, INSTALL, CHANGELOG files
   * Improve guessing, use all possible methods together (match to ID3v2, match to file name, ngrams) and weight.
   * Improve guessing, group songs by artist and album, assume same encoding for all (maybe configurable).
-  * Inform user by dialog that auto conversion still needs user to cross check, make dialog a "don't tell me again" type one.
-  * Implement action to remove files from list.
   * Implement status 'read error' for files not read.
   * Implement asynchronous handling of remote files, set status 'saved' only after uploading.
   * Amarok plugin.
   * Improve encoding.py, substitute top-n with better scoring.
   * Check setup.py for placement of .png and .mo files
-  * Use the StringHandler class of TagLib
+  * Use the StringHandler class of TagLib.
 
 = Other =
   * Document source code.
   * Always have a id3v2 dictionary, even when empty. Make this consistent across functions.
-  * Configuration dialog can't handle preferences [http://www.riverbankcomputing.com/pipermail/pyqt/2008-March/018906.html 1]
+  * Configuration dialog can't handle preferences [[http://www.riverbankcomputing.com/pipermail/pyqt/2008-March/018906.html 1]]
   * "What's this" in wrong place in help menu
   * Lack of reponsiveness of combo box; once an item was selected by clicking somewhere else and moving the mouse to an entry where the button is released then entries can't be selected by simply clicking any more.
   * Menu text doesn't appear by default, when fixing this, it appears in white (PyKDE4 issue).

@@ -7,7 +7,7 @@ ID3EncodingConverter is a simple ID3 tag viewer for KDE written in Python which
 supports conversion of tags from different character sets to Unicode with ID3v2.
 Its goal is fast and simple conversion for multiple files, letting the user
 compare between ID3v1 and ID3v2 tags and choose the correct encoding.
- 
+
 Features
   * Conversion of ID3v1 to ID3v2 tags
   * Simple side by side comparison of ID3v1 and ID3v2 tags
@@ -103,7 +103,6 @@ try:
     id3v2.FrameFactory.instance().setDefaultTextEncoding(tagpy.StringType.UTF8)
 except:
    os.popen("kdialog --sorry 'Install the newest version of tagpy. With your current version you might come across some bad encoding effects. Delete this line in the script to suppress the warning.'")
-   raise Exception('old version of tagpy')
 
 import ID3EncodingConverterUI
 import ID3GuessingSetupUI
@@ -236,6 +235,7 @@ class ID3v2RecodeWidget(QWidget, ID3v2EncodingUI.Ui_Widget):
             g_fileDataHandler.setFileID3v2Tag(self.fileName, tag,
                 self.id3v2[tag].encode('latin1', 'replace').decode(
                     self.encoding, 'replace'), self.encoding)
+        self.emit(SIGNAL("changed(bool)"), False)
         g_mainWindow.setID3v2DataView(
             g_fileDataHandler.fileInfo(self.fileName)['id3v2'])
         g_mainWindow.updateColoring()
@@ -326,7 +326,12 @@ class MainWindow(KXmlGuiWindow, ID3EncodingConverterUI.Ui_MainWindow):
         self.progressBar.setMaximumSize(90,25)
         self.statusBar().addWidget(self.progressBar)
         # finally build gui
-        self.setupGUI()
+        xmlFile = os.path.join(os.getcwd(), 'id3encodingconverterui.rc')
+        print xmlFile
+        if os.path.exists(xmlFile):
+            self.setupGUI(KXmlGuiWindow.Default, xmlFile)
+        else:
+            self.setupGUI()
         # help menu magic
         helpMenu = KHelpMenu(self, KCmdLineArgs.aboutData(), True)
         self.menuBar().addMenu(helpMenu.menu())
@@ -457,6 +462,14 @@ class MainWindow(KXmlGuiWindow, ID3EncodingConverterUI.Ui_MainWindow):
         self.actionCollection().addAction("reloadfiles", self.reloadFilesAction)
         self.connect(self.reloadFilesAction, SIGNAL("triggered(bool)"),
             self.reloadFiles)
+        # close files
+        self.closeFilesAction = KAction(KIcon("dialog-close"),
+            i18n("&Close"), self)
+        self.closeFilesAction.setWhatsThis(i18n("Closes selected files"))
+        self.actionCollection().addAction("closefiles", self.closeFilesAction)
+        self.connect(self.closeFilesAction, SIGNAL("triggered(bool)"),
+            self.closeFiles)
+        self.closeFilesAction.setEnabled(False)
         # disable file actions, no changes to content made yet
         self.setFileActionEnabled(False)
         # auto convert
@@ -500,6 +513,15 @@ class MainWindow(KXmlGuiWindow, ID3EncodingConverterUI.Ui_MainWindow):
         KStandardAction.quit(g_app.quit, self.actionCollection())
         KStandardAction.preferences(self.showSettings, self.actionCollection())
 
+    def queryClose(self):
+        # check for unsaved files
+        if g_fileDataHandler.hasModifiedFiles():
+            ret = KMessageBox.warningYesNo(self,
+                i18n("There are unsaved files or files currently being written. Do you want to loose changes?"))
+            if ret != KMessageBox.Yes:
+                return False
+        return True
+
     ### Main action slots
 
     def addFiles(self):
@@ -541,7 +563,7 @@ class MainWindow(KXmlGuiWindow, ID3EncodingConverterUI.Ui_MainWindow):
                             break
             yield top, files
 
-        import os, stat, types, glob
+        import stat, types, glob
         dirName = KFileDialog.getExistingDirectory(KUrl(), self,
             'Add directory')
         if unicode(dirName):
@@ -567,6 +589,10 @@ class MainWindow(KXmlGuiWindow, ID3EncodingConverterUI.Ui_MainWindow):
     def setAutomaticConversion(self, mode):
         self.autoConvert = mode
         if mode:
+            KMessageBox.information(self,
+                i18n("Auto-conversion will automatically copy the ID3v1 tags to ID3v2 using the encoding guessed unless any data would be overwritten that is unequal. Before saving you are urged to check the converted tags. Revert a file to restore its original contents but make sure to turn auto-conversion off before."),
+                i18n("Auto-conversion"), "show_autoconversion_notice")
+            # do the conversion
             g_fileDataHandler.losslessConversion()
             # update tag view
             if self.currentFile:
@@ -580,7 +606,9 @@ class MainWindow(KXmlGuiWindow, ID3EncodingConverterUI.Ui_MainWindow):
         fileList = []
         for index in self.currentlySelectedRows:
             fileName = g_fileModelHandler.getFileName(index)
-            if g_fileDataHandler.fileInfo(fileName)['status'] == 'modified':
+            if fileName \
+                and g_fileDataHandler.fileInfo(fileName)['status'] \
+                    == 'modified':
                 fileList.append(fileName)
         g_fileDataHandler.saveFiles(fileList)
 
@@ -594,10 +622,33 @@ class MainWindow(KXmlGuiWindow, ID3EncodingConverterUI.Ui_MainWindow):
         fileList = []
         for index in self.currentlySelectedRows:
             fileName = g_fileModelHandler.getFileName(index)
-            if g_fileDataHandler.fileInfo(fileName)['status'] == 'modified':
+            if fileName \
+                and g_fileDataHandler.fileInfo(fileName)['status'] \
+                    == 'modified':
                 fileList.append(fileName)
         # reload tags
         g_fileDataHandler.loadFiles(fileList)
+
+    def closeFiles(self):
+        # get file names
+        fileList = []
+        hasModifiedFiles = False
+        for index in self.currentlySelectedRows:
+            fileName = g_fileModelHandler.getFileName(index)
+            if fileName:
+                fileList.append(fileName)
+                if not hasModifiedFiles \
+                    and g_fileDataHandler.fileInfo(fileName)['status'] \
+                        in ('modified', 'saving'):
+                    hasModifiedFiles = True
+        # check for unsaved files
+        if changedFileList:
+            ret = KMessageBox.warningYesNo(self,
+                i18n("There are unsaved files or files currently being written. Do you want to loose changes?"))
+            if ret != KMessageBox.Yes:
+                return
+        # reload tags
+        g_fileDataHandler.removeFiles(fileList)
 
     ### Tag view slots
 
@@ -618,11 +669,15 @@ class MainWindow(KXmlGuiWindow, ID3EncodingConverterUI.Ui_MainWindow):
             if index.row() in self.currentlySelectedRows:
                 self.currentlySelectedRows.remove(index.row())
         self.recheckFileActions()
+        if self.currentlySelectedRows:
+            self.closeFilesAction.setEnabled(True)
+        else:
+            self.closeFilesAction.setEnabled(False)
 
     def recheckFileActions(self):
         for index in self.currentlySelectedRows:
             fileName = g_fileModelHandler.getFileName(index)
-            if g_fileDataHandler.fileInfoAvailable(fileName) \
+            if fileName and g_fileDataHandler.fileInfoAvailable(fileName) \
                 and g_fileDataHandler.fileInfo(fileName)['status'] \
                     == 'modified':
                 self.setFileActionEnabled(True)
@@ -969,14 +1024,19 @@ class FileModelHandler:
                 QVariant(i18n('Title')))
             self.fileModel.setHeaderData(3, Qt.Horizontal,
                 QVariant(i18n('Artist')))
-            self.fileModelNameIndex = {}
+            self.fileModelItem = {}
         return self.fileModel
 
     def addToFileModel(self, fileName):
-        idx = self.fileModel.rowCount()
-        self.fileModel.insertRows(idx, 1)
-        self.fileModel.setItem(idx, 1, QtGui.QStandardItem(fileName))
-        self.fileModelNameIndex[fileName] = idx
+        row = self.fileModel.rowCount()
+        self.fileModel.insertRows(row, 1)
+        self.fileModelItem[fileName] = QtGui.QStandardItem(fileName)
+        self.fileModel.setItem(row, 1, self.fileModelItem[fileName])
+
+    def removeFromFileModel(self, fileName):
+        row = self.getRowForFileName(fileName)
+        del self.fileModelItem[fileName]
+        self.fileModel.removeRow(row)
 
     def updateFileModel(self, fileName):
         fileInfo = g_fileDataHandler.fileInfo(fileName)
@@ -1002,13 +1062,21 @@ class FileModelHandler:
         else:
             status = QtGui.QStandardItem('')
         # write to model
-        row = self.fileModelNameIndex[fileName]
-        self.fileModel.setItem(row, 0, status)
-        self.fileModel.setItem(row, 2, QtGui.QStandardItem(title))
-        self.fileModel.setItem(row, 3, QtGui.QStandardItem(artist))
+        row = self.getRowForFileName(fileName)
+        if row != None:
+            self.fileModel.setItem(row, 0, status)
+            self.fileModel.setItem(row, 2, QtGui.QStandardItem(title))
+            self.fileModel.setItem(row, 3, QtGui.QStandardItem(artist))
+
+    def getRowForFileName(self, fileName):
+        if fileName in self.fileModelItem:
+            item = self.fileModelItem[fileName]
+            return self.fileModel.indexFromItem(item).row()
 
     def getFileName(self, row):
-        return unicode(self.fileModel.item(row, 1).text())
+        item = self.fileModel.item(row, 1)
+        if item:
+            return unicode(item.text())
 
 
 class TMPFileTypeResolver(FileTypeResolver):
@@ -1121,11 +1189,10 @@ class ReadWriteThread(threading.Thread):
                     # remove index
                     if self.readingJobIndex[fileName] == self.currentJobNo:
                         del self.readingJobIndex[fileName]
-                # if somebody is waiting for file, notify
-                if fileName in self.waiters:
-                    with self.waiters[fileName]:
-                        self.waiters[fileName].notify()
-                        del self.waiters[fileName]
+            # if somebody is waiting for file, notify
+            if fileName in self.waiters:
+                with self.waiters[fileName]:
+                    self.waiters[fileName].notify()
             self.jobList.task_done()
 
     def finishJobs(self):
@@ -1234,8 +1301,16 @@ class ReadWriteThread(threading.Thread):
     def waitForFileLoading(self, fileName):
         if fileName not in self.waiters:
             self.waiters[fileName] = threading.Condition()
-        with self.waiters[fileName]:
-            self.waiters[fileName].wait()
+        while self.isLoading(fileName):
+            with self.waiters[fileName]:
+                self.waiters[fileName].wait()
+
+    def waitForFileWriting(self, fileName):
+        if fileName not in self.waiters:
+            self.waiters[fileName] = threading.Condition()
+        while self.isWriting(fileName):
+            with self.waiters[fileName]:
+                self.waiters[fileName].wait()
 
     def hasRemainingWrites(self):
         for fileName in self.writingJobIndex:
@@ -1335,7 +1410,10 @@ class FileDataHandler:
         self.loadFiles(readList)
 
     def removeFiles(self, fileList):
-        pass # TODO implement
+        for fileName in fileList:
+            if self.rwThread.isWriting(fileName):
+                self.rwThread.waitForFileWriting(fileName)
+            g_fileModelHandler.removeFromFileModel(fileName)
 
     ### File I/O operations
 
@@ -1466,6 +1544,12 @@ class FileDataHandler:
         if not self.fileInfoAvailable(fileName):
             self.rwThread.waitForFileLoading(fileName)
         return self.fileData[fileName]
+
+    def hasModifiedFiles(self):
+        for fileName in self.fileData:
+            if self.fileInfo(fileName)['status'] in ('modified', 'saving'):
+                return True
+        return False
 
     ### Encoding management # TODO clean up
 

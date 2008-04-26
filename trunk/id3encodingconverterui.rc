@@ -11,6 +11,8 @@
         <Action name="reloadfiles" />
         <Separator/>
         <Action name="autoconvert" />
+        <Separator/>
+        <Action name="closefiles" />
     </Menu>
   </MenuBar>
   <ToolBar name="mainToolBar" >
@@ -23,6 +25,8 @@
       <Action name="reloadfiles" />
       <Separator/>
       <Action name="autoconvert" />
+      <Separator/>
+      <Action name="closefiles" />
       <ActionList name="dynamicActionlist" />
   </ToolBar>
 </gui>
