@@ -172,11 +172,7 @@ class ID3v2RecodeWidget(QWidget, ID3v2EncodingUI.Ui_Widget):
         # create a table as view inside the combo box
         comboTable = QtGui.QTreeView(self.v2title)
         comboTable.setModel(self.encodingModel)
-        # set header
-        header = QtGui.QHeaderView(Qt.Horizontal, comboTable)
-        header.setVisible(False)
-        header.setResizeMode(QtGui.QHeaderView.Stretch)
-        comboTable.setHeader(header)
+        comboTable.header().hide()
         comboTable.setRootIsDecorated(False)
         comboTable.setColumnHidden(2, True)
         comboTable.setSelectionBehavior(QtGui.QAbstractItemView.SelectRows)
@@ -374,11 +370,7 @@ class MainWindow(KXmlGuiWindow, ID3EncodingConverterUI.Ui_MainWindow):
         # create a table as view inside the combo box
         comboTable = QtGui.QTreeView(self.v1title)
         comboTable.setModel(self.encodingModel)
-        # set header
-        header = QtGui.QHeaderView(Qt.Horizontal, comboTable)
-        header.setVisible(False)
-        header.setResizeMode(QtGui.QHeaderView.Stretch)
-        comboTable.setHeader(header)
+        comboTable.header().hide()
         comboTable.setRootIsDecorated(False)
         comboTable.setColumnHidden(2, True)
         comboTable.setSelectionBehavior(QtGui.QAbstractItemView.SelectRows)
@@ -1407,6 +1399,7 @@ class FileDataHandler:
             if self.rwThread.isWriting(fileName):
                 self.rwThread.waitForFileWriting(fileName)
             g_fileModelHandler.removeFromFileModel(fileName)
+            del self.fileData[fileName]
 
     ### File I/O operations
 
