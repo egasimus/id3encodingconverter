@@ -168,7 +168,6 @@ class ID3v2RecodeWidget(QWidget, ID3v2EncodingUI.Ui_Widget):
     def setupEncodingCombo(self):
         # set up encoding model for combo box
         self.setupEncodingModel()
-        #self.encodingModel.sort(0) # TODO doesn't work as expected
         self.v2title.setModel(self.encodingModel)
         # create a table as view inside the combo box
         comboTable = QtGui.QTreeView(self.v2title)
@@ -316,7 +315,7 @@ class MainWindow(KXmlGuiWindow, ID3EncodingConverterUI.Ui_MainWindow):
         else:
             self.setupGUI()
         # help menu magic
-        helpMenu = KHelpMenu(self, KCmdLineArgs.aboutData(), True)
+        helpMenu = KHelpMenu(self, KCmdLineArgs.aboutData())
         self.menuBar().addMenu(helpMenu.menu())
         helpMenu.action(KHelpMenu.menuReportBug).setIcon(
             KIcon('tools-report-bug'))
@@ -366,12 +365,11 @@ class MainWindow(KXmlGuiWindow, ID3EncodingConverterUI.Ui_MainWindow):
         #header = QtGui.QHeaderView(Qt.Horizontal, self.treeView)
         #self.treeView.setHeader(header)
         self.treeView.setRootIsDecorated(False)
-        #self.treeView.setSortingEnabled(True) # TODO results in buggy handling
+        self.treeView.setSortingEnabled(True)
 
     def setupEncodingCombo(self):
         # set up encoding model for combo box
         self.setupEncodingModel()
-        #self.encodingModel.sort(0) # TODO doesn't work as expected
         self.v1title.setModel(self.encodingModel)
         # create a table as view inside the combo box
         comboTable = QtGui.QTreeView(self.v1title)
@@ -388,8 +386,11 @@ class MainWindow(KXmlGuiWindow, ID3EncodingConverterUI.Ui_MainWindow):
 
     def setupEncodingModel(self):
         self.encodingDict = g_fileDataHandler.getEncodings()
+        # sort the encoding list and build a row index
+        encodings = self.encodingDict.keys()
+        encodings.sort(key=lambda a: self.encodingDict[a])
         self.encodingIndex = dict([(encoding, idx) for idx, encoding \
-            in enumerate(self.encodingDict.keys())])
+            in enumerate(encodings)])
         rowCount = len(self.encodingIndex)
         self.encodingModel = QtGui.QStandardItemModel(rowCount, 3);
         self.encodingModel.setHeaderData(0, Qt.Horizontal,
@@ -625,11 +626,13 @@ class MainWindow(KXmlGuiWindow, ID3EncodingConverterUI.Ui_MainWindow):
                         in ('modified', 'saving'):
                     hasModifiedFiles = True
         # check for unsaved files
-        if changedFileList:
+        if hasModifiedFiles:
             ret = KMessageBox.warningYesNo(self,
                 i18n("There are unsaved files or files currently being written. Do you want to loose changes?"))
             if ret != KMessageBox.Yes:
                 return
+        # clear selection and thus clear currentlySelectedRows
+        self.fileSelectionModel.clearSelection()
         # reload tags
         g_fileDataHandler.removeFiles(fileList)
 
@@ -783,17 +786,21 @@ class MainWindow(KXmlGuiWindow, ID3EncodingConverterUI.Ui_MainWindow):
         if g_fileDataHandler.fileInfoAvailable(fileName):
             # get tag data
             fileInfo = g_fileDataHandler.fileInfo(fileName)
-            # update encoding chooser combo box
-            if fileInfo['id3v1']:
-                for row, encoding in enumerate(self.encodingDict):
-                    name = self.encodingDict[encoding]
-                    title = fileInfo['id3v1']['Title'].decode(encoding,
-                        'replace')
-                    self.encodingModel.setItem(row, 0,
-                        QtGui.QStandardItem(title))
-            # update tag view; set id3v2 data first, then v1 to update colours
-            self.setID3v2DataView(fileInfo['id3v2'])
-            self.setID3v1DataView(fileInfo['encoding'], fileInfo['id3v1'])
+            if fileInfo['status'] != 'error':
+                # update encoding chooser combo box
+                if fileInfo['id3v1']:
+                    for row, encoding in enumerate(self.encodingDict):
+                        name = self.encodingDict[encoding]
+                        title = fileInfo['id3v1']['Title'].decode(encoding,
+                            'replace')
+                        self.encodingModel.setItem(row, 0,
+                            QtGui.QStandardItem(title))
+                # update tag view; set id3v2 data first, then v1 to update
+                #   colours
+                self.setID3v2DataView(fileInfo['id3v2'])
+                self.setID3v1DataView(fileInfo['encoding'], fileInfo['id3v1'])
+            else:
+                self.setTagViewEnabled(False)
         else:
             self.setTagViewEnabled(False)
 
@@ -1042,6 +1049,9 @@ class FileModelHandler:
         elif fileInfo['status'] == 'saved':
             status = QtGui.QStandardItem(KIcon("dialog-ok-apply"), 'saved')
             status.setAccessibleText(i18n('file saved'))
+        elif fileInfo['status'] == 'error':
+            status = QtGui.QStandardItem(KIcon("dialog-error"), 'error')
+            status.setAccessibleText(i18n('file error'))
         else:
             status = QtGui.QStandardItem('')
         # write to model
@@ -1443,17 +1453,21 @@ class FileDataHandler:
                 FileEvent('read', fileName))
         elif msg == 'readFailure':
             self.rwThread.pause(True)
-            msg = unicode(ki18n("The file '%1' couldn't be read.")\
+            msg = unicode(ki18n("The file '%1' could not be read.")\
                     .subs(fileName).toString())
+            fileInfo = {'status': 'error', 'id3v1': None, 'id3v2': None}
+            self.fileData[fileName] = fileInfo
+            g_fileModelHandler.updateFileModel(fileName)
             QCoreApplication.postEvent(g_mainWindow, ErrorEvent('read', msg))
-            self.removeFiles([fileName]) # TODO instead of removing, mark as errorneous
         elif msg == 'tagFailure':
             self.rwThread.pause(True)
             msg = unicode(ki18n(
                 "The format of file '%1' doesn't allow ID3v1 or ID3v2 tags.")\
                     .subs(fileName).toString())
+            fileInfo = {'status': 'error', 'id3v1': None, 'id3v2': None}
+            self.fileData[fileName] = fileInfo
+            g_fileModelHandler.updateFileModel(fileName)
             QCoreApplication.postEvent(g_mainWindow, ErrorEvent('read', msg))
-            self.removeFiles([fileName]) # TODO instead of removing, mark as errorneous
         elif msg == 'writeSuccess':
             if not self.rwThread.isQueuedForWriting(fileName):
                 # if no other instances is being written, update status
@@ -1464,7 +1478,7 @@ class FileDataHandler:
         elif msg == 'writeFailure':
             self.rwThread.pause(True)
             self.fileInfo(fileName)['status'] = 'modified'
-            msg = unicode(ki18n("The file '%1' couldn't be saved.")\
+            msg = unicode(ki18n("The file '%1' could not be saved.")\
                     .subs(fileName).toString())
             if self.rwThread.hasRemainingWrites():
                 QCoreApplication.postEvent(g_mainWindow,
