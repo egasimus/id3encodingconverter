@@ -6,29 +6,26 @@
 This page acts as a "To Do" list and collects points that need to be resolved, some urgent, some being of rather minor importance.
 
 = Concept =
-  * Is arrangement into ID3v1 and ID3v2 good? ID3v2 supports Unicode only from Version 3 on, so ID3v2 doesn't actually mean having Unicode generally. Rather move away from comparison of the two versions and let user select encoding of one tag set and make editing possible. If more than one tag set exists, warn user and allow choosing of preferred version.
+  * Currently the main design stipulates the comparison between ID3v1 ad ID3v2. Speaking of my experience, there are many ID3v2 tags not encoded using Unicode which lack the information of the encoding used. As the design relies on one part (the left side) being text in some unknown encoding while the other (the right side) is the actual tag in Unicode, the view suffers from the tags containing badly encoded strings. Currently there is a small button to allow the correction of the encoding, but this brakes the simplicity of reencoding. It might be a better solution to only show one tag (using the union of tags provided by TagLib's tag() method), and let the user operate on this. Optionally the user can view all tags and mix between the different versions.
 
 = Functions =
 
   * LICENSE, INSTALL, CHANGELOG files
   * Improve guessing, use all possible methods together (match to ID3v2, match to file name, ngrams) and weight.
   * Improve guessing, group songs by artist and album, assume same encoding for all (maybe configurable).
-  * Implement status 'read error' for files not read.
   * Implement asynchronous handling of remote files, set status 'saved' only after uploading.
   * Amarok plugin.
   * Improve encoding.py, substitute top-n with better scoring.
-  * Check setup.py for placement of .png and .mo files
-  * Use the StringHandler class of TagLib.
 
 = Other =
+  * Check setup.py for placement of .png and .mo files, solve .wiki files placement
+  * Use the StringHandler class of TagLib.
   * Document source code.
   * Always have a id3v2 dictionary, even when empty. Make this consistent across functions.
-  * Configuration dialog can't handle preferences [[http://www.riverbankcomputing.com/pipermail/pyqt/2008-March/018906.html 1]]
-  * "What's this" in wrong place in help menu
-  * Lack of reponsiveness of combo box; once an item was selected by clicking somewhere else and moving the mouse to an entry where the button is released then entries can't be selected by simply clicking any more.
-  * Menu text doesn't appear by default, when fixing this, it appears in white (PyKDE4 issue).
-  * Find a way to allow sorting. Currently it mixes up the indices to the file name mapping and thus is unusable.
-  * Sort encoding combo box by encoding name (language group)
+  * Configuration dialog can't handle preferences [[http://www.riverbankcomputing.com/pipermail/pyqt/2008-March/018906.html 1]].
+  * "What's this" in wrong place in help menu [[http://www.riverbankcomputing.com/pipermail/pyqt/2008-April/019189.html]].
+  * Lack of responsiveness of combo box; once an item was selected by clicking somewhere else and moving the mouse to an entry where the button is released then entries can't be selected by simply clicking any more.
+  * Menu text doesn't appear by default, when fixing this, it appears in white [[http://www.riverbankcomputing.com/pipermail/pyqt/2008-April/019000.html]].
   * Get proper size of file table view to fit window.
   * Get proper size for ID3v2 encoding dialog.
   * Small handbook.
