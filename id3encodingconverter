@@ -180,8 +180,11 @@ class ID3v2RecodeWidget(QWidget, ID3v2EncodingUI.Ui_Widget):
 
     def setupEncodingModel(self):
         self.encodingDict = g_fileDataHandler.getEncodings()
+        # sort the encoding list and build a row index
+        encodings = self.encodingDict.keys()
+        encodings.sort(key=lambda a: self.encodingDict[a])
         self.encodingIndex = dict([(encoding, idx) for idx, encoding \
-            in enumerate(self.encodingDict.keys())])
+            in enumerate(encodings)])
         rowCount = len(self.encodingIndex)
         self.encodingModel = QtGui.QStandardItemModel(rowCount, 3);
         self.encodingModel.setHeaderData(0, Qt.Horizontal,
@@ -781,7 +784,8 @@ class MainWindow(KXmlGuiWindow, ID3EncodingConverterUI.Ui_MainWindow):
             if fileInfo['status'] != 'error':
                 # update encoding chooser combo box
                 if fileInfo['id3v1']:
-                    for row, encoding in enumerate(self.encodingDict):
+                    for encoding in self.encodingIndex:
+                        row = self.encodingIndex[encoding]
                         name = self.encodingDict[encoding]
                         title = fileInfo['id3v1']['Title'].decode(encoding,
                             'replace')
