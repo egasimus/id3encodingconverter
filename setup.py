@@ -8,7 +8,7 @@ import os
 FULLAUTHOR = "Christoph Burgmer <christoph.burgmer@stud.uni-karlsruhe.de>"
 LICENSE = 'GNU General Public License v2'
 URL = "http://code.google.com/p/id3encodingconverter"
-VERSION = "0.1alpha"
+VERSION = "0.1alpha.svn20080501"
 
 (AUTHOR, EMAIL) = re.match('^(.*?)\s*<(.*)>$', FULLAUTHOR).groups()
 
@@ -49,8 +49,7 @@ data_files.extend(createMOPathList(kde4LocaleTarget, 'mo/'))
 setup(name='id3encodingconverter',
     version=VERSION,
     description='ID3 tag viewer for conversion of different character sets',
-    long_description="cjklib provides language routines for handling Han " \
-        + "id3encodingconverter is a simple ID3 tag viewer for KDE written in" \
+    long_description="id3encodingconverter is a simple ID3 tag viewer for KDE written in" \
         + " Python which supports conversion of tags from different character" \
         + " sets to Unicode with ID3v2. Its goal is fast and simple" \
         + " conversion for multiple files, letting the user compare between" \
