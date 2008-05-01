@@ -1,5 +1,3 @@
-#!/usr/bin/python
-
 from PyQt4.QtCore import SIGNAL
 from PyKDE4.kdeui import KEditListBox, KComboBox, KLineEdit
 

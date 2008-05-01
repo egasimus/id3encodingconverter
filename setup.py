@@ -19,6 +19,32 @@ kde4DesktopTarget = os.popen("kde4-config --expandvars --install apps")\
     .read().strip()
 kde4IconTarget = os.popen("kde4-config --expandvars --install icon")\
     .read().strip()
+kde4LocaleTarget = os.popen("kde4-config --expandvars --install locale")\
+    .read().strip()
+
+def createMOPathList(targetDir, sourceDir):
+    import os, stat
+    names = os.listdir(sourceDir)
+    fileList = []
+    for name in names:
+        try:
+            st = os.lstat(os.path.join(sourceDir, name))
+        except os.error:
+            continue
+        if stat.S_ISDIR(st.st_mode):
+            for fileName in os.listdir(os.path.join(sourceDir, name)):
+                target = os.path.join(targetDir, name, 'LC_MESSAGES')
+                source = os.path.join(sourceDir, name, fileName)
+                fileList.append((target, [source]))
+    return fileList
+
+data_files = [(os.path.join(kde4DataTarget, 'id3encodingconverter'),
+        ['id3encodingconverterui.rc', 'id3encodingconverter_about.png']),
+    (os.path.join(kde4DesktopTarget, 'id3encodingconverter'),
+        ['id3encodingconverter.desktop']),
+    ('share/doc/id3encodingconverter/', ['TODO', 'DEVELOPMENT']), # 'README', 'changelog', 'COPYING'
+    (kde4IconTarget, ['id3encodingconverter.png']),]
+data_files.extend(createMOPathList(kde4LocaleTarget, 'mo/'))
 
 setup(name='id3encodingconverter',
     version=VERSION,
@@ -32,18 +58,21 @@ setup(name='id3encodingconverter',
     author=AUTHOR,
     author_email=EMAIL,
     url=URL,
+    download_url='http://code.google.com/p/id3encodingconverter/downloads/list',
     py_modules=['encoding', 'ngram', 'ID3EncodingConverterUI',
         'ID3GuessingSetupUI', 'ID3v2EncodingUI', 'kcombolistbox', 'pytagpy'],
     packages=[],
     package_data={},
     scripts=['id3encodingconverter'],
-    data_files=[(os.path.join(kde4DataTarget, 'id3encodingconverter'),
-            ['id3encodingconverterui.rc', 'id3encodingconverter_about.png']),
-        (os.path.join(kde4DesktopTarget, 'id3encodingconverter'),
-                 ['id3encodingconverter.desktop']),
-        ('share/doc/id3encodingconverter/', ['TODO', 'DEVELOPMENT']), # 'README', 'changelog', 'COPYING'
-        (kde4IconTarget, ['id3encodingconverter.png']),],
+    data_files=data_files,
     license=LICENSE,
     classifiers=['Development Status :: 3 - Alpha',
+        #'Development Status :: 4 - Beta',
+        #'Development Status :: 5 - Production/Stable',
+        'License :: OSI Approved :: GNU General Public License (GPL)',
         'Operating System :: OS Independent',
+        'Environment :: X11 Applications :: KDE',
+        'Topic :: Desktop Environment :: K Desktop Environment (KDE)',
+        'Topic :: Multimedia :: Sound/Audio',
+        'Intended Audience :: End Users/Desktop',
         'Programming Language :: Python',])
