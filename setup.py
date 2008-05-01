@@ -39,11 +39,11 @@ def createMOPathList(targetDir, sourceDir):
     return fileList
 
 data_files = [(os.path.join(kde4DataTarget, 'id3encodingconverter'),
-        ['id3encodingconverterui.rc', 'id3encodingconverter_about.png']),
+        ['id3encodingconverterui.rc', 'data/id3encodingconverter_about.png']),
     (os.path.join(kde4DesktopTarget, 'id3encodingconverter'),
         ['id3encodingconverter.desktop']),
     ('share/doc/id3encodingconverter/', ['TODO', 'DEVELOPMENT']), # 'README', 'changelog', 'COPYING'
-    (kde4IconTarget, ['id3encodingconverter.png']),]
+    (kde4IconTarget, ['data/id3encodingconverter.png']),]
 data_files.extend(createMOPathList(kde4LocaleTarget, 'mo/'))
 
 setup(name='id3encodingconverter',
