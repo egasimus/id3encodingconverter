@@ -19,7 +19,6 @@ This page acts as a "To Do" list and collects points that need to be resolved, s
   * Only enable own conversion button for ID3v2 if 1) non-ASCII, 2) convertible?
 
 = Other =
-  * Check setup.py for placement of .png and .mo files, solve .wiki files placement
   * Use the StringHandler class of TagLib.
   * Document source code.
   * Always have a id3v2 dictionary, even when empty. Make this consistent across functions.
