@@ -108,6 +108,14 @@ import ID3EncodingConverterUI
 import ID3GuessingSetupUI
 import ID3v2EncodingUI
 
+# get data file directory
+kde4DataTarget = os.popen("kde4-config --expandvars --install data")\
+    .read().strip()
+dataDir = os.path.join(kde4DataTarget, 'id3encodingconverter')
+# get icon file directory
+iconDir = os.popen("kde4-config --expandvars --install icon")\
+    .read().strip()
+
 doDebug = True
 
 class ErrorEvent(QEvent):
@@ -280,7 +288,10 @@ class MainWindow(KXmlGuiWindow, ID3EncodingConverterUI.Ui_MainWindow):
             iconName = self.buttonIcons[element]
             element.setIcon(KIcon(iconName))
         # set window icon
-        self._appIcon = QtGui.QIcon('id3encodingconverter.png')
+        iconFile = os.path.join(os.getcwd(), 'data', 'id3encodingconverter.png')
+        if not os.path.exists(iconFile):
+            iconFile = os.path.join(iconDir, 'id3encodingconverter.png')
+        self._appIcon = QtGui.QIcon(iconFile)
         self.setWindowIcon(self._appIcon)
         # set up file table
         self.setupFileTable()
@@ -308,7 +319,6 @@ class MainWindow(KXmlGuiWindow, ID3EncodingConverterUI.Ui_MainWindow):
         self.statusBar().addWidget(self.progressBar)
         # finally build gui
         xmlFile = os.path.join(os.getcwd(), 'id3encodingconverterui.rc')
-        print xmlFile
         if os.path.exists(xmlFile):
             self.setupGUI(KXmlGuiWindow.Default, xmlFile)
         else:
@@ -1761,7 +1771,11 @@ def main():
     global g_app
     g_app = KApplication()
 
-    logo = QtGui.QImage('id3encodingconverter_about.png')
+    logoFile = os.path.join(os.getcwd(), 'data',
+        'id3encodingconverter_about.png')
+    if not os.path.exists(logoFile):
+        logoFile = os.path.join(dataDir, 'id3encodingconverter_about.png')
+    logo = QtGui.QImage(logoFile)
     setprogramlogo(aboutData, logo)
 
     # create preferences

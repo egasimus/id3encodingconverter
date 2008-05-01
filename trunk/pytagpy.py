@@ -17,7 +17,7 @@ import tagpy
 global _fileTypeResolvers
 _fileTypeResolvers = []
 
-class PyFileTypeResolver:
+class PyFileTypeResolver(object):
     def __init__(self):
         pass
 
@@ -25,7 +25,7 @@ class PyFileTypeResolver:
         audioPropertiesStyle=tagpy.ReadStyle.Average):
         raise NotImplementedError
 
-class PyFileRef():
+class PyFileRef(object):
 
     def __init__(self):
         self._file = None
