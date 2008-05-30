@@ -11,6 +11,7 @@ This page acts as a "To Do" list and collects points that need to be resolved, s
 = Functions =
 
   * LICENSE, INSTALL, CHANGELOG files
+  * Use http://chardet.feedparser.org/
   * Improve guessing, use all possible methods together (match to ID3v2, match to file name, ngrams) and weight.
   * Improve guessing, group songs by artist and album, assume same encoding for all (maybe configurable).
   * Implement asynchronous handling of remote files, set status 'saved' only after uploading.
