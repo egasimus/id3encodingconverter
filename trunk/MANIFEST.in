@@ -4,5 +4,6 @@ include TODO
 include DEVELOPMENT
 include id3encodingconverter.desktop
 include data/*.png
+include data/*.svg
 include po/*
 include mo/*

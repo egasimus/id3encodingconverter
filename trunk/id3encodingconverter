@@ -54,6 +54,7 @@ __version__ = "0.1alpha"
 
 import sys
 import os
+import signal
 import glob
 import locale
 import codecs
@@ -309,8 +310,7 @@ class MainWindow(KXmlGuiWindow, ID3EncodingConverterUI.Ui_MainWindow):
         self.warnPalette.setColor(QtGui.QPalette.Base, Qt.red)
         # set auto converson to false
         self.setAutomaticConversion(False)
-        # disable standard help menu
-        self.setHelpMenuEnabled(False)
+
         # status bar for showing file I/O
         self.progressBar = QProgressBar(self)
         self.progressBar.setRange(0, 0)
@@ -323,14 +323,7 @@ class MainWindow(KXmlGuiWindow, ID3EncodingConverterUI.Ui_MainWindow):
             self.setupGUI(KXmlGuiWindow.Default, xmlFile)
         else:
             self.setupGUI()
-        # help menu magic
-        helpMenu = KHelpMenu(self, KCmdLineArgs.aboutData())
-        self.menuBar().addMenu(helpMenu.menu())
-        helpMenu.action(KHelpMenu.menuReportBug).setIcon(
-            KIcon('tools-report-bug'))
-        helpMenu.action(KHelpMenu.menuAboutApp).setIcon(self._appIcon)
-        whatsThis = helpMenu.action(KHelpMenu.menuWhatsThis) # TODO not added by default, currently added to the wrong place
-        helpMenu.menu().addAction(whatsThis)
+
         # set up cleaning
         self.connect(g_app, SIGNAL("aboutToQuit()"), self.releaseTempFiles)
         self.connect(g_app, SIGNAL("aboutToQuit()"),
@@ -1799,6 +1792,9 @@ def main():
         fileUrl = args.url(i)
         fileUrlList.append(args.url(i))
     QCoreApplication.postEvent(g_mainWindow, FileAddEvent(fileUrlList))
+
+    # react to CTRL+C on the command line
+    signal.signal(signal.SIGINT, signal.SIG_DFL)
 
     g_app.exec_()
 
