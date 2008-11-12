@@ -1752,6 +1752,8 @@ def main():
     aboutData.addAuthor(ki18n("Christoph Burgmer"), ki18n("Developer"),
         "christoph.burgmer@stud.uni-karlsruhe.de",
         "http://www.stud.uni-karlsruhe.de/~uyhc")
+    aboutData.setCustomAuthorText(ki18n("Please use http://code.google.com/p/id3encodingconverter/issues/list to report bugs."),
+        ki18n("Please use <a href=\"http://code.google.com/p/id3encodingconverter/issues/list\">http://code.google.com/p/id3encodingconverter/issues/list</a> to report bugs."))
 
     KCmdLineArgs.init(sys.argv, aboutData)
     options = KCmdLineOptions()
