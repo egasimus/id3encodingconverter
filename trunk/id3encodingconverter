@@ -71,10 +71,10 @@ from PyKDE4.kdecore import ki18n, i18n, KCmdLineArgs, KCmdLineOptions
 from PyKDE4.kdecore import KAboutData, KConfig, KUrl, KGlobal
 from PyKDE4.kdeui import KApplication, KXmlGuiWindow, KAction, KToggleAction
 from PyKDE4.kdeui import KStandardAction, KStandardShortcut, KIcon, KMessageBox
-from PyKDE4.kdeui import KConfigDialog, KPageDialog, KConfigSkeleton, KHelpMenu
+from PyKDE4.kdeui import KConfigDialog, KPageDialog, KConfigSkeleton
 from PyKDE4.kdeui import KEditListBox, KComboBox, KLineEdit, KDialog
 from PyKDE4.kio import KFile, KFileDialog, KIO
-from PyKDE4.setprogramlogo import setprogramlogo
+# TODO from PyKDE4.setprogramlogo import setprogramlogo
 try:
     import tagpy
     from tagpy import mpeg, flac, mpc # TODO , wavpack, trueaudio
@@ -1771,7 +1771,7 @@ def main():
     if not os.path.exists(logoFile):
         logoFile = os.path.join(dataDir, 'id3encodingconverter_about.png')
     logo = QtGui.QImage(logoFile)
-    setprogramlogo(aboutData, logo)
+    # TODO setprogramlogo(aboutData, logo)
 
     # create preferences
     global g_preferences # TODO don't use global, give it to constructor of all classes
